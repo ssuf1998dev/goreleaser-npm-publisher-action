@@ -1,18 +1,35 @@
-# Create a GitHub Action Using TypeScript
+<p align="center">
+  <a href="https://github.com/evg4b/goreleaser-npm-publisher" title="goreleaser-npm-publisher">
+    <img alt="goreleaser-npm-publisher logo" width="30%" src="https://raw.githubusercontent.com/evg4b/goreleaser-npm-publisher/main/.github/logo.svg">
+  </a>
+</p>
 
-[![GitHub Super-Linter](https://github.com/actions/typescript-action/actions/workflows/linter.yml/badge.svg)](https://github.com/super-linter/super-linter)
-![CI](https://github.com/actions/typescript-action/actions/workflows/ci.yml/badge.svg)
-[![Check dist/](https://github.com/actions/typescript-action/actions/workflows/check-dist.yml/badge.svg)](https://github.com/actions/typescript-action/actions/workflows/check-dist.yml)
-[![CodeQL](https://github.com/actions/typescript-action/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/actions/typescript-action/actions/workflows/codeql-analysis.yml)
-[![Coverage](./badges/coverage.svg)](./badges/coverage.svg)
+<div align="center">
+  <h1>goreleaser-npm-publisher-action</h1>
+</div>
 
-Use this template to bootstrap the creation of a TypeScript action. :rocket:
+<p align="center">
+  <a href="https://github.com/super-linter/super-linter" title="NPM Version">
+    <img alt="GitHub Super-Linter" src="https://github.com/actions/typescript-action/actions/workflows/linter.yml/badge.svg">  
+  </a>
+  <a href="https://github.com/actions/typescript-action/actions/workflows/ci.yml" title="CI">
+    <img alt="CI" src="https://github.com/actions/typescript-action/actions/workflows/ci.yml/badge.svg">
+  </a>
+  <a href="#" title="Coverage">
+    <img alt="Coverage" src="./badges/coverage.svg">
+  </a>
+  <br>
+  <a href="https://github.com/actions/typescript-action/actions/workflows/codeql-analysis.yml" title="CodeQL">
+    <img alt="CodeQL" src="https://github.com/actions/typescript-action/actions/workflows/codeql-analysis.yml/badge.svg">
+  </a>
+  <a href="https://github.com/actions/typescript-action/actions/workflows/check-dist.yml" title="Check dist">
+    <img alt="Check dist" src="https://github.com/actions/typescript-action/actions/workflows/check-dist.yml/badge.svg">
+  </a>
+</p>
 
-This template includes compilation support, tests, a validation workflow,
-publishing, and versioning guidance.
-
-If you are new, there's also a simpler introduction in the
-[Hello world JavaScript action repository](https://github.com/actions/hello-world-javascript-action).
+<p align="center">
+  Publish Go binaries to npm registry, automated tool for build and publish Go binaries to npm registry.
+</p>
 
 ## Create Your Own Action
 
