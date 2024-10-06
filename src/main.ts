@@ -1,26 +1,41 @@
-import * as core from '@actions/core'
-import { wait } from './wait'
+import { getBooleanInput, getInput, getMultilineInput } from '@actions/core';
+import { publish, setLogger } from 'goreleaser-npm-publisher';
+import { cwd } from 'node:process';
+import { GithubActionLogger } from './logger';
 
-/**
- * The main function for the action.
- * @returns {Promise<void>} Resolves when the action is complete.
- */
 export async function run(): Promise<void> {
-  try {
-    const ms: string = core.getInput('milliseconds')
+  const logger = new GithubActionLogger();
+  logger.debug(`Running publishing...`);
 
-    // Debug logs are only output if the `ACTIONS_STEP_DEBUG` secret is true
-    core.debug(`Waiting ${ms} milliseconds ...`)
+  setLogger(new GithubActionLogger());
+  logger.debug(`Setup Github Action Logger`);
 
-    // Log the current timestamp, wait, then log the new timestamp
-    core.debug(new Date().toTimeString())
-    await wait(parseInt(ms, 10))
-    core.debug(new Date().toTimeString())
+  const project = getInput('project') ?? cwd();
+  logger.debug(`Loading project: ${project ?? 'N/A'}`);
 
-    // Set outputs for other workflow steps to use
-    core.setOutput('time', new Date().toTimeString())
-  } catch (error) {
-    // Fail the workflow run if an error occurs
-    if (error instanceof Error) core.setFailed(error.message)
-  }
+  const builder = getInput('builder');
+  logger.debug(`Loading builder: ${builder ?? 'N/A'}`);
+
+  const clear = getBooleanInput('clear') ?? false;
+  logger.debug(`Loading clear parameter: ${clear}`);
+
+  const prefix = getInput('prefix');
+  logger.debug(`Loading prefix: ${prefix ?? 'N/A'}`);
+
+  const description = getInput('description');
+  logger.debug(`Loading description: ${description ?? 'N/A'}`);
+
+  const files = getMultilineInput('files') ?? ['readme.md', 'license'];
+  logger.debug(`Loading files : ${files ?? 'N/A'}`);
+
+  await publish({
+    project,
+    builder,
+    clear,
+    prefix,
+    description,
+    files,
+  });
+
+  logger.debug('Finished publishing');
 }

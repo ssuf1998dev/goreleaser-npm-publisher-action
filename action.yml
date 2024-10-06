@@ -1,5 +1,5 @@
-name: 'The name of your action here'
-description: 'Provide a description here'
+name: 'goreleaser-npm-publisher-action'
+description: 'Build and publish npm packages based on goreleaser output folder'
 author: 'Evgeny Abramovich'
 
 # Add your action's branding here. This will appear on the GitHub Marketplace.
@@ -9,15 +9,24 @@ branding:
 
 # Define your inputs here.
 inputs:
-  milliseconds:
-    description: 'Your input description here'
-    required: true
-    default: '1000'
-
-# Define your outputs here.
-outputs:
-  time:
-    description: 'Your output description here'
+  project:
+    description: 'Path to the project with was built by GoReleaser'
+    required: false
+  builder:
+    description: 'Name of the builder'
+    required: false
+  clear:
+    description: 'Clear the dist/npm folder before building the project'
+    required: false
+  prefix:
+    description: 'Prefix for the npm package'
+    required: false
+  description:
+    description: 'Description for the npm package'
+    required: false
+  files:
+    description: 'File globs to include in the npm package'
+    required: false
 
 runs:
   using: node20
