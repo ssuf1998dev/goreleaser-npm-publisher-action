@@ -53454,12 +53454,8 @@ var __webpack_exports__ = {};
 var exports = __webpack_exports__;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-/**
- * The entrypoint for the action.
- */
 const core_1 = __nccwpck_require__(7484);
 const main_1 = __nccwpck_require__(1730);
-// eslint-disable-next-line @typescript-eslint/no-floating-promises
 (0, main_1.run)().catch(core_1.setFailed);
 
 })();
