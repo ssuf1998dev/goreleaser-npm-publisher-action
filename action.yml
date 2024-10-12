@@ -18,6 +18,7 @@ inputs:
   clear:
     description: 'Clear the dist/npm folder before building the project'
     required: false
+    default: true
   prefix:
     description: 'Prefix for the npm package'
     required: false
