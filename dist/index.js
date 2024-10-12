@@ -43282,6 +43282,8 @@ async function run() {
     logger.debug(`Loading description: ${description ?? 'N/A'}`);
     const files = (0, core_1.getMultilineInput)('files') ?? ['readme.md', 'license'];
     logger.debug(`Loading files : ${files ?? 'N/A'}`);
+    const token = (0, core_1.getInput)('token');
+    logger.debug(`Loading token: ${token ?? 'N/A'}`);
     await (0, goreleaser_npm_publisher_1.publish)({
         project,
         builder,
@@ -43289,6 +43291,7 @@ async function run() {
         prefix,
         description,
         files,
+        token,
     });
     logger.debug('Finished publishing');
 }
@@ -53130,269 +53133,31 @@ exports.Minipass = Minipass;
 "use strict";
 
 
-var lodash = __nccwpck_require__(2356)
-var promises = __nccwpck_require__(1943)
-var path = __nccwpck_require__(6928)
-var glob = __nccwpck_require__(3529)
-var process$1 = __nccwpck_require__(932)
-var picocolors = __nccwpck_require__(7336)
-var child_process = __nccwpck_require__(5317)
-var util = __nccwpck_require__(9023)
+var lodash = __nccwpck_require__(2356);
+var promises = __nccwpck_require__(1943);
+var path = __nccwpck_require__(6928);
+var glob = __nccwpck_require__(3529);
+var process = __nccwpck_require__(932);
+var picocolors = __nccwpck_require__(7336);
+var child_process = __nccwpck_require__(5317);
+var os = __nccwpck_require__(857);
 
-var P = t => promises.readFile(t, 'utf-8').then(r => JSON.parse(r))
-var x = t => promises.readFile(t, 'utf8').then(r => JSON.parse(r))
-var D = async (t, r) => {
-  await promises.writeFile(t, JSON.stringify(r, null, 2))
-}
-var b = (t, r) => glob.glob(r, { cwd: t, nocase: !0, ignore: ['node_modules/**', 'dist/'] })
-var p = class {
-  projectPath
-
-  constructor(r) {
-    this.projectPath = path.resolve(process$1.cwd(), r)
-  }
-
-  get artifactsPath() {
-    return path.join(this.projectPath, 'dist', 'artifacts.json')
-  }
-
-  get metadataPath() {
-    return path.join(this.projectPath, 'dist', 'metadata.json')
-  }
-
-  get distPath() {
-    return path.join(this.projectPath, 'dist', 'npm')
-  }
-
-  project(...r) {
-    return path.join(this.projectPath, ...r)
-  }
-
-  packageFolder(...[r, ...o]) {
-    return path.join(this.distPath, lodash.kebabCase(r), ...o)
-  }
-
-  packageJson(r) {
-    return path.join(this.projectPath, 'dist', 'npm', lodash.kebabCase(r), 'package.json')
-  }
-
-  readmeForPackage(r) {
-    return path.join(this.projectPath, 'dist', 'npm', lodash.kebabCase(r), 'README.md')
-  }
-}
-var d = class t extends String {
-  __code = !0
-
-  static isCode(r) {
-    return r instanceof t && r.__code
-  }
-}
-var nt = t => {
-  let r = t.getFullYear(), o = t.getMonth(), e = t.getDate(), i = t.getHours(), a = t.getMinutes(), s = t.getSeconds(),
-    c = t.getMilliseconds()
-  return `new Date(${r}, ${o}, ${e}, ${i}, ${a}, ${s}, ${c})`
-}, at = t => {
-  let r = Object.entries(t).map(([o, e]) => `${o}: ${w(e)}`)
-  return lodash.isEmpty(t) ? '{}' : `{ ${r.join(', ')} }`
-}, st = t => lodash.isEmpty(t) ? '[]' : `[ ${t.map(w).join(', ')} ]`, w = t => {
-  switch (!0) {
-    case d.isCode(t):
-      return t.toString()
-    case typeof t == 'string':
-      return `'${t}'`
-    case typeof t == 'number':
-      return t.toString()
-    case typeof t == 'boolean':
-      return t.toString()
-    case t === null:
-      return 'null'
-    case t === void 0:
-      return 'undefined'
-    case t instanceof Date:
-      return nt(t)
-    case typeof t == 'symbol':
-      return `Symbol('${t.description}')`
-    case Array.isArray(t):
-      return st(t)
-    case(typeof t == 'object' && (t == null ? void 0 : t.constructor.name) === 'Object'):
-      return at(t)
-  }
-  throw new Error(`Unsupported type: ${typeof t}`)
-}
-var M = (t, ...r) => {
-  let o = t.reduce((e, i, a) => e + w(r[a - 1]) + i)
-  return new d(o)
-}
-var y = M
-var l = class {
-  constructor(r, o) {
-    this.output = r
-    this.verbose = o
-  }
-
-  async group(r, o) {
-    this.output.group(r)
-    try {
-      return await o()
-    } finally {
-      this.output.groupEnd()
-    }
-  }
-
-  info(r) {
-    this.output.log(r)
-  }
-
-  warning(r) {
-    this.output.warn(picocolors.yellow(r.toString()))
-  }
-
-  error(r) {
-    this.output.error(r)
-  }
-
-  debug(r) {
-    this.verbose && this.output.debug(r)
-  }
-}
-var n = new l(console, !1), T = t => {
-  n = t
-}
-var pt = {
-  amd64: 'x64',
-  386: 'ia32',
-  arm: 'arm',
-  arm64: 'arm64',
-  s390x: 's390x',
-  s390: 's390',
-  riscv64: 'riscv64',
-  ppc64: 'ppc64',
-  ppc: 'ppc',
-  mips: 'mips'
-}, H = t => {
-  let r = pt[t]
-  if (!r) throw new Error(`${t} is not supported`)
-  return r
-}
-var mt = {
-  darwin: 'darwin',
-  linux: 'linux',
-  windows: 'win32',
-  android: 'android',
-  aix: 'aix',
-  freebsd: 'freebsd',
-  openbsd: 'openbsd',
-  solaris: 'sunos',
-  netbsd: 'netbsd'
-}, L = t => {
-  let r = mt[t]
-  if (!r) throw new Error(`${t} is not supported`)
-  return r
-}
-var j = (t, r, o) => ({
-    name: `${r.project_name}_${t.goos}_${t.goarch}`,
-    version: r.version,
-    os: L(t.goos),
-    cpu: H(t.goarch),
-    bin: `${t.extra.Binary}${t.extra.Ext}`,
-    sourceBinary: t.path,
-    destinationBinary: t.path,
-    files: o
-  }), k = (t, r, o, e) => R({
-    name: _(t, o),
-    description: r,
-    version: t.version,
-    bin: { [t.name]: t.bin },
-    os: [t.os],
-    cpu: [t.cpu],
-    files: e
-  }),
-  _ = (t, r) => 'project_name' in t ? lodash.isEmpty(r) ? t.project_name : `${r}/${t.project_name}` : lodash.isEmpty(r) ? t.name : `${r}/${t.name}`,
-  $ = (t, r, o, e, i) => R({
-    name: _(r, e),
-    description: o,
-    version: r.version,
-    bin: { [r.project_name]: 'index.js' },
-    optionalDependencies: t.reduce((a, s) => ({ ...a, [_(s, e)]: r.version }), {}),
-    os: lodash.uniq(t.map(a => a.os)),
-    cpu: lodash.uniq(t.map(a => a.cpu)),
-    files: i
-  }), R = ({ description: t, ...r }) => t ? { ...r, description: t } : r
-var v = t => r => r.type === 'Binary' && r.extra.ID === t
-var C = t => r => (t(), r)
-var G = async (t, r, o) => {
-  for (let e of o) {
-    let i = t.project(e), a = t.packageFolder(r, e)
-    await promises.copyFile(i, a).then(C(() => n.debug(`Copied file ${i} to ${a}`))).catch(C(() => n.error(`Copied file ${i} to ${a}`)))
-  }
-}, F = async t => {
-  let r = new p(t.project), o = await x(r.artifactsPath), e = await P(r.metadataPath), i = [],
-    a = t.builder ?? e.project_name, s = o.filter(v(a)), c = await b(t.project, t.files)
-  for (let g of s) {
-    let h = g.path.split(path.sep)
-    await n.group(`Built package ${h[1]}`, async () => {
-      let Q = path.join(t.project, g.path), { base: V } = path.parse(g.path), J = r.packageFolder(h[1])
-      await promises.mkdir(J, { recursive: !0 })
-      let W = path.join(J, V), O = j(g, e, c)
-      i.push(O), await promises.copyFile(Q, W)
-      let X = k(O, t.description, t.prefix, c)
-      await D(r.packageJson(h[1]), X), await G(r, h[1], c)
-    })
-  }
-  let m = $(i, e, t.description, t.prefix, c)
-  await promises.mkdir(r.packageFolder(e.project_name), { recursive: !0 }), await D(r.packageJson(e.project_name), m)
-  let u = path.join(r.packageFolder(e.project_name), 'index.js')
-  await promises.writeFile(u, lt(i, t.prefix), 'utf-8'), await G(r, e.project_name, c)
-}, lt = (t, r) => {
-  let o = t.reduce((a, s) => {
-    let c = lodash.isEmpty(r) ? [s.name] : [String(r), s.name]
-    return { ...a, [`${s.os}_${s.cpu}`]: [...c, s.bin] }
-  }, {}), e = lodash.isEmpty(r) ? y`path.dirname(__dirname)` : y`path.dirname(path.dirname(__dirname))`
-  return y`#!/usr/bin/env node
+var x=t=>promises.readFile(t,"utf-8").then(r=>JSON.parse(r));var P=t=>promises.readFile(t,"utf8").then(r=>JSON.parse(r));var A=async(t,r)=>{await promises.writeFile(t,JSON.stringify(r,null,2));};var M=(t,r)=>glob.glob(r,{cwd:t,nocase:!0,ignore:["node_modules/**","dist/"]});var f=class{projectPath;constructor(r){this.projectPath=path.resolve(process.cwd(),r);}get artifactsPath(){return path.join(this.projectPath,"dist","artifacts.json")}get metadataPath(){return path.join(this.projectPath,"dist","metadata.json")}get distPath(){return path.join(this.projectPath,"dist","npm")}project(...r){return path.join(this.projectPath,...r)}packageFolder(...[r,...e]){return path.join(this.distPath,lodash.kebabCase(r),...e)}packageJson(r){return path.join(this.projectPath,"dist","npm",lodash.kebabCase(r),"package.json")}readmeForPackage(r){return path.join(this.projectPath,"dist","npm",lodash.kebabCase(r),"README.md")}};var l=class t extends String{__code=!0;static isCode(r){return r instanceof t&&r.__code}};var mt=t=>{let r=t.getFullYear(),e=t.getMonth(),o=t.getDate(),i=t.getHours(),a=t.getMinutes(),c=t.getSeconds(),s=t.getMilliseconds();return `new Date(${r}, ${e}, ${o}, ${i}, ${a}, ${c}, ${s})`},ft=t=>{let r=Object.entries(t).map(([e,o])=>`${e}: ${w(o)}`);return lodash.isEmpty(t)?"{}":`{ ${r.join(", ")} }`},ut=t=>lodash.isEmpty(t)?"[]":`[ ${t.map(w).join(", ")} ]`,w=t=>{switch(!0){case l.isCode(t):return t.toString();case typeof t=="string":return `'${t}'`;case typeof t=="number":return t.toString();case typeof t=="boolean":return t.toString();case t===null:return "null";case t===void 0:return "undefined";case t instanceof Date:return mt(t);case typeof t=="symbol":return `Symbol('${t.description}')`;case Array.isArray(t):return ut(t);case(typeof t=="object"&&(t==null?void 0:t.constructor.name)==="Object"):return ft(t)}throw new Error(`Unsupported type: ${typeof t}`)};var R=(t,...r)=>{let e=t.reduce((o,i,a)=>o+w(r[a-1])+i);return new l(e)};var y=R;var h=class{constructor(r,e){this.output=r;this.verbose=e;}async group(r,e){this.output.group(r);try{return await e()}finally{this.output.groupEnd();}}info(r){this.output.log(r);}warning(r){this.output.warn(picocolors.yellow(r.toString()));}error(r){this.output.error(r);}debug(r){this.verbose&&this.output.debug(r);}};var n=new h(console,!1),B=t=>{n=t;};var lt={amd64:"x64",386:"ia32",arm:"arm",arm64:"arm64",s390x:"s390x",s390:"s390",riscv64:"riscv64",ppc64:"ppc64",ppc:"ppc",mips:"mips"},L=t=>{let r=lt[t];if(!r)throw new Error(`${t} is not supported`);return r};var gt={darwin:"darwin",linux:"linux",windows:"win32",android:"android",aix:"aix",freebsd:"freebsd",openbsd:"openbsd",solaris:"sunos",netbsd:"netbsd"},H=t=>{let r=gt[t];if(!r)throw new Error(`${t} is not supported`);return r};var b=(t,r,e)=>({name:`${r.project_name}_${t.goos}_${t.goarch}`,version:r.version,os:H(t.goos),cpu:L(t.goarch),bin:`${t.extra.Binary}${t.extra.Ext}`,sourceBinary:t.path,destinationBinary:t.path,files:e}),k=(t,r,e,o)=>G({name:S(t,e),description:r,version:t.version,bin:{[t.name]:t.bin},os:[t.os],cpu:[t.cpu],files:o}),S=(t,r)=>"project_name"in t?lodash.isEmpty(r)?t.project_name:`${r}/${t.project_name}`:lodash.isEmpty(r)?t.name:`${r}/${t.name}`,$=(t,r,e,o,i)=>G({name:S(r,o),description:e,version:r.version,bin:{[r.project_name]:"index.js"},optionalDependencies:t.reduce((a,c)=>({...a,[S(c,o)]:r.version}),{}),os:lodash.uniq(t.map(a=>a.os)),cpu:lodash.uniq(t.map(a=>a.cpu)),files:i}),G=({description:t,...r})=>t?{...r,description:t}:r;var j=t=>r=>r.type==="Binary"&&r.extra.ID===t;var O=t=>r=>(t(),r);var W=async(t,r,e)=>{for(let o of e){let i=t.project(o),a=t.packageFolder(r,o);await promises.copyFile(i,a).then(O(()=>n.debug(`Copied file ${i} to ${a}`))).catch(O(()=>n.error(`Copied file ${i} to ${a}`)));}},E=async t=>{let r=new f(t.project),e=await P(r.artifactsPath),o=await x(r.metadataPath),i=[],a=t.builder??o.project_name,c=e.filter(j(a)),s=await M(t.project,t.files);for(let d of c){let p=d.path.split(path.sep);await n.group(`Built package ${p[1]}`,async()=>{let _=path.join(t.project,d.path),{base:rt}=path.parse(d.path),T=r.packageFolder(p[1]);await promises.mkdir(T,{recursive:!0});let et=path.join(T,rt),J=b(d,o,s);i.push(J),await promises.copyFile(_,et);let ot=k(J,t.description,t.prefix,s);await A(r.packageJson(p[1]),ot),await W(r,p[1],s);});}let m=$(i,o,t.description,t.prefix,s);await promises.mkdir(r.packageFolder(o.project_name),{recursive:!0}),await A(r.packageJson(o.project_name),m);let g=path.join(r.packageFolder(o.project_name),"index.js");await promises.writeFile(g,wt(i,t.prefix),"utf-8"),await W(r,o.project_name,s);},wt=(t,r)=>{let e=t.reduce((a,c)=>{let s=lodash.isEmpty(r)?[c.name]:[String(r),c.name];return {...a,[`${c.os}_${c.cpu}`]:[...s,c.bin]}},{}),o=lodash.isEmpty(r)?y`path.dirname(__dirname)`:y`path.dirname(path.dirname(__dirname))`;return y`#!/usr/bin/env node
 const path = require('path');
 const child_process = require('child_process');
-const mapping = ${o};
-const modulesDirectory = ${e};
+const mapping = ${e};
+const modulesDirectory = ${o};
 const definition = mapping[process.platform + '_' + process.arch];
 const packagePath = path.join(modulesDirectory, ...definition);
 child_process.spawn(packagePath, process.argv.splice(2), {
   stdio: 'inherit',
   env: process.env,
-});`.toString()
-}
-var U = async (t, r, o) => {
-  await n.group(`${r.name}@${r.version}`, () => {
-    if (r.description && n.info(`description: ${r.description}`), n.info(`os: ${r.os.join(', ')}`), n.info(`cpu: ${r.cpu.join(', ')}`), o && n.info(`bin: ${t.packageFolder(o.sourceBinary)}`), r.optionalDependencies) {
-      n.debug('  optionalDependencies:')
-      for (let [e, i] of Object.entries(r.optionalDependencies)) n.debug(`    ${e}@${i}`)
-    }
-    return Promise.resolve()
-  })
-}, Y = async t => {
-  let r = new p(t.project), o = await P(r.metadataPath), e = await x(r.artifactsPath), i = await b(t.project, t.files),
-    a = t.builder ?? o.project_name, s = e.filter(v(a)).map(m => {
-      let u = j(m, o, i)
-      return { definition: u, json: k(u, t.description, t.prefix, i) }
-    }), c = $(s.map(({ definition: m }) => m), o, t.description, t.prefix, i)
-  await n.group('Main package:', () => U(r, c)), n.info(''), await n.group('Platform packages:', async () => {
-    for (let { definition: m, json: u } of s) n.debug(''), await U(r, u, m)
-  })
-}
-var bt = util.promisify(child_process.exec), K = async t => {
-  await F(t)
-  let r = new p(t.project), o = lodash.sortBy(await promises.readdir(r.distPath), e => -e.length)
-  for (let e of o) {
-    n.info(r.packageFolder(e))
-    let { stdout: i } = await bt('npm publish --access public', { env: process.env, cwd: r.packageFolder(e) })
-    n.info(i)
-  }
-}
-var ee = K, oe = Y, ie = F
+});`.toString()};var K=async(t,r,e)=>{await n.group(`${r.name}@${r.version}`,()=>{if(r.description&&n.info(`description: ${r.description}`),n.info(`os: ${r.os.join(", ")}`),n.info(`cpu: ${r.cpu.join(", ")}`),e&&n.info(`bin: ${t.packageFolder(e.sourceBinary)}`),r.optionalDependencies){n.debug("  optionalDependencies:");for(let[o,i]of Object.entries(r.optionalDependencies))n.debug(`    ${o}@${i}`);}return Promise.resolve()});},V=async t=>{let r=new f(t.project),e=await x(r.metadataPath),o=await P(r.artifactsPath),i=t.builder??e.project_name,a=o.filter(j(i)).map(s=>{let m=b(s,e,[]);return {definition:m,json:k(m,t.description,t.prefix,[])}}),c=$(a.map(({definition:s})=>s),e,t.description,t.prefix,[]);await n.group("Main package:",()=>K(r,c)),n.info(""),await n.group("Platform packages:",async()=>{for(let{definition:s,json:m}of a)n.debug(""),await K(r,m,s);});};var X=async(t,r)=>{if(!t.token)return await r({...process.env});let e=path.resolve(t.pwd??process.cwd(),".npmrc");try{let o=["; THIS_FILE_WAS_GENERATED_BY GORELEASER_NPM_PUBLISHER","; PLEASE_DO_NOT_TOUCH_IT!",`//registry.npmjs.org/:_authToken=${t.token}`];return await promises.writeFile(e,o.join(os.EOL),"utf-8"),await r({...process.env,NPM_TOKEN:t.token??""})}finally{await promises.rm(e,{force:!0});}};var v=class extends Error{code;summary;detail;constructor(r){super(`${r.code}: ${r.summary}`),this.summary=r.summary,this.detail=r.detail,this.code=r.code;}};var D=async(t,r)=>{let e=os.platform()==="win32",o=e?"npm.cmd":"npm";return X(r??{},a=>new Promise((c,s)=>{let m=child_process.spawn(o,["--json",...t],{cwd:(r==null?void 0:r.pwd)??process.cwd(),env:a,shell:e}),g="",d="";m.stdout.on("data",p=>g+=p),m.stderr.on("data",p=>d+=p),m.on("close",p=>{if(p){let _=JSON.parse(g);s(new v(_.error));}c(JSON.parse(g));}),m.on("error",p=>s(p));}))};var Z=async(t,r)=>D(["publish","--access","public"],{pwd:t,token:r==null?void 0:r.token});var tt=async t=>{await E(t);let r=new f(t.project),e=lodash.sortBy(await promises.readdir(r.distPath),o=>-o.length);for(let o of e){n.info(r.packageFolder(o));let i=await Z(r.packageFolder(o),{token:t.token});await n.group(`Successfully published ${i.id}`,async()=>{n.info(`Name: ${i.name}`),n.info(`Version: ${i.version}`),n.info(`Size: ${i.size}`),n.info(`Unpacked size: ${i.unpackedSize}`),n.info(`SHA sum: ${i.shasum}`),n.info(`Integrity: ${i.integrity}`),n.info(`Filename: ${i.filename}`),i.files.length&&await n.group("Files",()=>Promise.all(i.files.map(a=>n.group(`Path: ${a.path}`,()=>(n.info(`Size: ${a.size}`),n.info(`Mode: ${a.mode}`),Promise.resolve()))))),n.info(`Entry count: ${i.entryCount}`);});}};var Oe=tt,Ce=V,De=E;
 
-exports.build = ie
-exports.list = oe
-exports.publish = ee
-exports.setLogger = T
+exports.build = De;
+exports.list = Ce;
+exports.publish = Oe;
+exports.setLogger = B;
 
 
 /***/ })

@@ -16,7 +16,7 @@ export async function run(): Promise<void> {
   const builder = getInput('builder');
   logger.debug(`Loading builder: ${builder ?? 'N/A'}`);
 
-  const clear = getBooleanInput('clear') ?? false;
+  const clear = getInput('clear') ?? false;
   logger.debug(`Loading clear parameter: ${clear}`);
 
   const prefix = getInput('prefix');
@@ -28,6 +28,9 @@ export async function run(): Promise<void> {
   const files = getMultilineInput('files') ?? ['readme.md', 'license'];
   logger.debug(`Loading files : ${files ?? 'N/A'}`);
 
+  const token = getInput('token');
+  logger.debug(`Loading token: ${token ?? 'N/A'}`);
+
   await publish({
     project,
     builder,
@@ -35,6 +38,7 @@ export async function run(): Promise<void> {
     prefix,
     description,
     files,
+    token,
   });
 
   logger.debug('Finished publishing');

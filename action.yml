@@ -24,6 +24,9 @@ inputs:
   description:
     description: 'Description for the npm package'
     required: false
+  token:
+    description: 'Npm auth token'
+    required: false
   files:
     description: 'File globs to include in the npm package'
     required: false
