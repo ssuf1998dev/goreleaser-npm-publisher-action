@@ -1,4 +1,4 @@
-const transform = (value: unknown): string => {
+const format = (value: unknown): string => {
   if (typeof value === 'undefined') {
     return 'undefined';
   }
@@ -15,6 +15,6 @@ export const fmt = (
   ...data: unknown[]
 ): string => {
   return templates.reduce((firsBlock, secondBlock, index) => {
-    return firsBlock + transform(data[index - 1]) + secondBlock;
+    return firsBlock + format(data[index - 1]) + secondBlock;
   });
 };

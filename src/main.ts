@@ -7,7 +7,6 @@ export async function run(): Promise<void> {
   const logger = new GithubActionLogger();
 
   logger.debug(`Running publishing...`);
-  logger.info('Test iteration 2.');
 
   setLogger(new GithubActionLogger());
   logger.debug(`Setup Github Action Logger`);
