@@ -1,28 +1,19 @@
-import { publish, setLogger } from 'goreleaser-npm-publisher';
+import { publish } from 'goreleaser-npm-publisher';
 import { cwd } from 'node:process';
 import { boolean, string, stringArray } from './inputs';
-import { GithubActionLogger } from './logger';
+import { logger } from './logger';
 
 export async function run(): Promise<void> {
-  const logger = new GithubActionLogger();
-
   logger.debug(`Running publishing...`);
 
-  setLogger(new GithubActionLogger());
-  logger.debug(`Setup Github Action Logger`);
-
   await publish({
-    project: string({ name: 'project', defaultValue: cwd(), logger }),
-    builder: string({ name: 'project', logger }),
-    clear: boolean({ name: 'clear', logger }),
-    prefix: string({ name: 'prefix', logger }),
-    description: string({ name: 'description', logger }),
-    files: stringArray({
-      name: 'files',
-      logger,
-      defaultValue: ['readme.md', 'license'],
-    }),
-    token: string({ name: 'token', logger }),
+    project: string('project', cwd()),
+    builder: string('builder'),
+    clear: boolean('clear'),
+    prefix: string('prefix'),
+    description: string('description'),
+    files: stringArray('files', ['readme.md', 'license']),
+    token: string('token'),
   });
 
   logger.debug('Finished publishing');

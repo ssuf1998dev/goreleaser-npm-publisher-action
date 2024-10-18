@@ -49115,26 +49115,27 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.stringArray = exports.boolean = exports.string = void 0;
 const core_1 = __nccwpck_require__(7484);
 const helpres_1 = __nccwpck_require__(7168);
+const logger_1 = __nccwpck_require__(4752);
 const undefinedIfEmpty = (value) => {
     return value && value?.length > 0 ? value : undefined;
 };
-const string = ({ name, logger, defaultValue, }) => {
+const string = (name, defaultValue) => {
     const raw = (0, core_1.getInput)(name, { trimWhitespace: true });
     const value = undefinedIfEmpty(raw) ?? defaultValue;
-    logger.debug((0, helpres_1.fmt) `Loading ${name}: ${value}`);
+    logger_1.logger.debug((0, helpres_1.fmt) `Loading ${name}: ${value}`);
     return value;
 };
 exports.string = string;
-const boolean = ({ name, logger }) => {
+const boolean = (name) => {
     const value = (0, core_1.getBooleanInput)(name);
-    logger.debug((0, helpres_1.fmt) `Loading ${name}: ${value}`);
+    logger_1.logger.debug((0, helpres_1.fmt) `Loading ${name}: ${value}`);
     return value;
 };
 exports.boolean = boolean;
-const stringArray = ({ name, logger, defaultValue, }) => {
+const stringArray = (name, defaultValue) => {
     const raw = (0, core_1.getMultilineInput)(name, { trimWhitespace: true });
     const value = (raw ?? defaultValue ?? []).filter(undefinedIfEmpty);
-    logger.debug((0, helpres_1.fmt) `Loading ${name}: ${value}`);
+    logger_1.logger.debug((0, helpres_1.fmt) `Loading ${name}: ${value}`);
     return value;
 };
 exports.stringArray = stringArray;
@@ -49142,7 +49143,7 @@ exports.stringArray = stringArray;
 
 /***/ }),
 
-/***/ 6999:
+/***/ 6925:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -49172,6 +49173,21 @@ exports.GithubActionLogger = GithubActionLogger;
 
 /***/ }),
 
+/***/ 4752:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.logger = void 0;
+const goreleaser_npm_publisher_1 = __nccwpck_require__(3850);
+const github_action_logger_1 = __nccwpck_require__(6925);
+exports.logger = new github_action_logger_1.GithubActionLogger();
+(0, goreleaser_npm_publisher_1.setLogger)(exports.logger);
+
+
+/***/ }),
+
 /***/ 1730:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
@@ -49182,26 +49198,19 @@ exports.run = run;
 const goreleaser_npm_publisher_1 = __nccwpck_require__(3850);
 const node_process_1 = __nccwpck_require__(1708);
 const inputs_1 = __nccwpck_require__(8422);
-const logger_1 = __nccwpck_require__(6999);
+const logger_1 = __nccwpck_require__(4752);
 async function run() {
-    const logger = new logger_1.GithubActionLogger();
-    logger.debug(`Running publishing...`);
-    (0, goreleaser_npm_publisher_1.setLogger)(new logger_1.GithubActionLogger());
-    logger.debug(`Setup Github Action Logger`);
+    logger_1.logger.debug(`Running publishing...`);
     await (0, goreleaser_npm_publisher_1.publish)({
-        project: (0, inputs_1.string)({ name: 'project', defaultValue: (0, node_process_1.cwd)(), logger }),
-        builder: (0, inputs_1.string)({ name: 'project', logger }),
-        clear: (0, inputs_1.boolean)({ name: 'clear', logger }),
-        prefix: (0, inputs_1.string)({ name: 'prefix', logger }),
-        description: (0, inputs_1.string)({ name: 'description', logger }),
-        files: (0, inputs_1.stringArray)({
-            name: 'files',
-            logger,
-            defaultValue: ['readme.md', 'license'],
-        }),
-        token: (0, inputs_1.string)({ name: 'token', logger }),
+        project: (0, inputs_1.string)('project', (0, node_process_1.cwd)()),
+        builder: (0, inputs_1.string)('builder'),
+        clear: (0, inputs_1.boolean)('clear'),
+        prefix: (0, inputs_1.string)('prefix'),
+        description: (0, inputs_1.string)('description'),
+        files: (0, inputs_1.stringArray)('files', ['readme.md', 'license']),
+        token: (0, inputs_1.string)('token'),
     });
-    logger.debug('Finished publishing');
+    logger_1.logger.debug('Finished publishing');
 }
 
 

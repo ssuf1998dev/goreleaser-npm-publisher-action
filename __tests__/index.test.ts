@@ -1,4 +1,3 @@
-// test;
 const runMock = jest.fn().mockName('main.run').mockResolvedValueOnce(undefined);
 
 const setFailedMock = jest.fn().mockName('@actions/core.setFailed');
