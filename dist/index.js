@@ -49107,37 +49107,13 @@ exports.fmt = fmt;
 /***/ }),
 
 /***/ 8422:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.stringArray = exports.boolean = exports.string = void 0;
 const core_1 = __nccwpck_require__(7484);
-const os = __importStar(__nccwpck_require__(8161));
 const helpres_1 = __nccwpck_require__(7168);
 const logger_1 = __nccwpck_require__(4752);
 const undefinedIfEmpty = (value) => {
@@ -49157,9 +49133,11 @@ const boolean = (name) => {
 };
 exports.boolean = boolean;
 const stringArray = (name, defaultValue) => {
-    const raw = (0, core_1.getMultilineInput)(name, { trimWhitespace: true })?.flatMap(input => input.split(os.EOL));
+    const raw = (0, core_1.getInput)(name, { trimWhitespace: true })
+        ?.split(/[\r\n]/)
+        ?.map(item => item.trim());
     const value = (raw ?? defaultValue ?? []).filter(undefinedIfEmpty);
-    logger_1.logger.debug((0, helpres_1.fmt) `Loading ${name}: ${value}`);
+    logger_1.logger.debug((0, helpres_1.fmt) `Loading ${name}: ${value} (${value.length} lines)`);
     return value;
 };
 exports.stringArray = stringArray;
@@ -49373,14 +49351,6 @@ module.exports = require("node:fs");
 
 "use strict";
 module.exports = require("node:fs/promises");
-
-/***/ }),
-
-/***/ 8161:
-/***/ ((module) => {
-
-"use strict";
-module.exports = require("node:os");
 
 /***/ }),
 
