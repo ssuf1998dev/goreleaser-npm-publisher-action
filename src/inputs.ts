@@ -1,4 +1,5 @@
 import { getBooleanInput, getInput, getMultilineInput } from '@actions/core';
+import * as os from 'node:os';
 import { fmt } from './helpres';
 import { logger } from './logger';
 
@@ -30,7 +31,10 @@ export const stringArray = (
   name: string,
   defaultValue?: string[],
 ): string[] => {
-  const raw = getMultilineInput(name, { trimWhitespace: true });
+  const raw = getMultilineInput(name, { trimWhitespace: true })?.flatMap(
+    input => input.split(os.EOL),
+  );
+
   const value = (raw ?? defaultValue ?? []).filter(undefinedIfEmpty);
 
   logger.debug(fmt`Loading ${name}: ${value}`);
