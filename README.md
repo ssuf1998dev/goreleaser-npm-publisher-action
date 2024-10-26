@@ -35,8 +35,8 @@
 
 ## Usage
 
-To publish your binaries to the registry, just run
-`goreleaser-npm-publisher-action` after `goreleaser` action.
+To publish your binaries to the registry, simply run
+`goreleaser-npm-publisher-action` after the `goreleaser` action.
 
 ```yaml
 steps:
@@ -56,33 +56,38 @@ steps:
     uses: evg4b/goreleaser-npm-publisher-action@v1.0.0
     with:
       token: ${{ secrets.NPM_AUTH_TOKEN }}
+      prefix: @evg4b
+      files: |-
+        LICENSE
+        README.md
+        ROADMAP.md
 ```
 
 Also, you can customize the packages with next options:
 
-| Option          | Type     | Description                                                                           |
-| --------------- | -------- | ------------------------------------------------------------------------------------- |
-| **project**     | string   | Path to the root of go package                                                        |
-| **builder**     | string   | The name of the builder whose output should be used for building packages             |
-| **clear**       | boolean  | Clean `dist/npm` folder before build                                                  |
-| **prefix**      | string   | NPM package scope prefix                                                              |
-| **description** | string   | NPM package description                                                               |
-| **files**       | string[] | Files witch should be included to the NPM package (`README.md`, `license` by default) |
-| **token**       | string   | The NPM auth token                                                                    |
+| Option          | Type     | Description                                                                                 |
+| --------------- | -------- | ------------------------------------------------------------------------------------------- |
+| **project**     | string   | Specifies the path to the root of the Go package.                                           |
+| **builder**     | string   | The name of the builder whose output will be used for building the packages.                |
+| **clear**       | boolean  | Clean the `dist/npm` folder before the build.                                               |
+| **prefix**      | string   | NPM package scope prefix.                                                                   |
+| **description** | string   | NPM package description.                                                                    |
+| **files**       | string[] | Files that should be included in the NPM package (e.g., `README.md`, `LICENSE` by default). |
+| **token**       | string   | The NPM authentication token.                                                               |
 
 > [!NOTE]
 >
-> You can read more about the internal processes of package building and the
-> internal structure of platform-specific packages on the
+> You can learn more about the internal processes of package building and the
+> structure of platform-specific packages on the
 > [goreleaser-npm-publisher](https://github.com/evg4b/goreleaser-npm-publisher)
 > tool page.
 
 ## Authorization
 
-`goreleaser-npm-publisher` recommends using auth_token for authorization by
-simply passing it in the corresponding parameter. If you need a different type
-of authorization, you can run npm login before starting the action, which will
-also work
+`goreleaser-npm-publishe`r recommends using the auth_token for authorization by
+passing it in the corresponding parameter. If you require a different type of
+authorization, you can run npm login before starting the action, which will also
+work.
 
 ```yaml
 steps:
@@ -99,7 +104,7 @@ steps:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   - name: Login to the NPM
-    # Log into the registry however you like.
+    # Log into the registry using your preferred method.
     run: npm login ...
 
   - name: Build and publish NPM packages
