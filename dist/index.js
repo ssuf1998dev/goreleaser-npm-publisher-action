@@ -9331,6 +9331,88 @@ function escapeJsonPtr(str) {
 
 /***/ }),
 
+/***/ 6642:
+/***/ ((module) => {
+
+let p = process || {}, argv = p.argv || [], env = p.env || {}
+let isColorSupported =
+	!(!!env.NO_COLOR || argv.includes("--no-color")) &&
+	(!!env.FORCE_COLOR || argv.includes("--color") || p.platform === "win32" || ((p.stdout || {}).isTTY && env.TERM !== "dumb") || !!env.CI)
+
+let formatter = (open, close, replace = open) =>
+	input => {
+		let string = "" + input, index = string.indexOf(close, open.length)
+		return ~index ? open + replaceClose(string, close, replace, index) + close : open + string + close
+	}
+
+let replaceClose = (string, close, replace, index) => {
+	let result = "", cursor = 0
+	do {
+		result += string.substring(cursor, index) + replace
+		cursor = index + close.length
+		index = string.indexOf(close, cursor)
+	} while (~index)
+	return result + string.substring(cursor)
+}
+
+let createColors = (enabled = isColorSupported) => {
+	let f = enabled ? formatter : () => String
+	return {
+		isColorSupported: enabled,
+		reset: f("\x1b[0m", "\x1b[0m"),
+		bold: f("\x1b[1m", "\x1b[22m", "\x1b[22m\x1b[1m"),
+		dim: f("\x1b[2m", "\x1b[22m", "\x1b[22m\x1b[2m"),
+		italic: f("\x1b[3m", "\x1b[23m"),
+		underline: f("\x1b[4m", "\x1b[24m"),
+		inverse: f("\x1b[7m", "\x1b[27m"),
+		hidden: f("\x1b[8m", "\x1b[28m"),
+		strikethrough: f("\x1b[9m", "\x1b[29m"),
+
+		black: f("\x1b[30m", "\x1b[39m"),
+		red: f("\x1b[31m", "\x1b[39m"),
+		green: f("\x1b[32m", "\x1b[39m"),
+		yellow: f("\x1b[33m", "\x1b[39m"),
+		blue: f("\x1b[34m", "\x1b[39m"),
+		magenta: f("\x1b[35m", "\x1b[39m"),
+		cyan: f("\x1b[36m", "\x1b[39m"),
+		white: f("\x1b[37m", "\x1b[39m"),
+		gray: f("\x1b[90m", "\x1b[39m"),
+
+		bgBlack: f("\x1b[40m", "\x1b[49m"),
+		bgRed: f("\x1b[41m", "\x1b[49m"),
+		bgGreen: f("\x1b[42m", "\x1b[49m"),
+		bgYellow: f("\x1b[43m", "\x1b[49m"),
+		bgBlue: f("\x1b[44m", "\x1b[49m"),
+		bgMagenta: f("\x1b[45m", "\x1b[49m"),
+		bgCyan: f("\x1b[46m", "\x1b[49m"),
+		bgWhite: f("\x1b[47m", "\x1b[49m"),
+
+		blackBright: f("\x1b[90m", "\x1b[39m"),
+		redBright: f("\x1b[91m", "\x1b[39m"),
+		greenBright: f("\x1b[92m", "\x1b[39m"),
+		yellowBright: f("\x1b[93m", "\x1b[39m"),
+		blueBright: f("\x1b[94m", "\x1b[39m"),
+		magentaBright: f("\x1b[95m", "\x1b[39m"),
+		cyanBright: f("\x1b[96m", "\x1b[39m"),
+		whiteBright: f("\x1b[97m", "\x1b[39m"),
+
+		bgBlackBright: f("\x1b[100m", "\x1b[49m"),
+		bgRedBright: f("\x1b[101m", "\x1b[49m"),
+		bgGreenBright: f("\x1b[102m", "\x1b[49m"),
+		bgYellowBright: f("\x1b[103m", "\x1b[49m"),
+		bgBlueBright: f("\x1b[104m", "\x1b[49m"),
+		bgMagentaBright: f("\x1b[105m", "\x1b[49m"),
+		bgCyanBright: f("\x1b[106m", "\x1b[49m"),
+		bgWhiteBright: f("\x1b[107m", "\x1b[49m"),
+	}
+}
+
+module.exports = createColors()
+module.exports.createColors = createColors
+
+
+/***/ }),
+
 /***/ 2356:
 /***/ (function(module, exports, __nccwpck_require__) {
 
@@ -26544,98 +26626,6 @@ function escapeJsonPtr(str) {
     root._ = _;
   }
 }.call(this));
-
-
-/***/ }),
-
-/***/ 7336:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-let argv = process.argv || [],
-	env = process.env
-let isColorSupported =
-	!("NO_COLOR" in env || argv.includes("--no-color")) &&
-	("FORCE_COLOR" in env ||
-		argv.includes("--color") ||
-		process.platform === "win32" ||
-		(require != null && (__nccwpck_require__(2018).isatty)(1) && env.TERM !== "dumb") ||
-		"CI" in env)
-
-let formatter =
-	(open, close, replace = open) =>
-	input => {
-		let string = "" + input
-		let index = string.indexOf(close, open.length)
-		return ~index
-			? open + replaceClose(string, close, replace, index) + close
-			: open + string + close
-	}
-
-let replaceClose = (string, close, replace, index) => {
-	let result = ""
-	let cursor = 0
-	do {
-		result += string.substring(cursor, index) + replace
-		cursor = index + close.length
-		index = string.indexOf(close, cursor)
-	} while (~index)
-	return result + string.substring(cursor)
-}
-
-let createColors = (enabled = isColorSupported) => {
-	let init = enabled ? formatter : () => String
-	return {
-		isColorSupported: enabled,
-		reset: init("\x1b[0m", "\x1b[0m"),
-		bold: init("\x1b[1m", "\x1b[22m", "\x1b[22m\x1b[1m"),
-		dim: init("\x1b[2m", "\x1b[22m", "\x1b[22m\x1b[2m"),
-		italic: init("\x1b[3m", "\x1b[23m"),
-		underline: init("\x1b[4m", "\x1b[24m"),
-		inverse: init("\x1b[7m", "\x1b[27m"),
-		hidden: init("\x1b[8m", "\x1b[28m"),
-		strikethrough: init("\x1b[9m", "\x1b[29m"),
-
-		black: init("\x1b[30m", "\x1b[39m"),
-		red: init("\x1b[31m", "\x1b[39m"),
-		green: init("\x1b[32m", "\x1b[39m"),
-		yellow: init("\x1b[33m", "\x1b[39m"),
-		blue: init("\x1b[34m", "\x1b[39m"),
-		magenta: init("\x1b[35m", "\x1b[39m"),
-		cyan: init("\x1b[36m", "\x1b[39m"),
-		white: init("\x1b[37m", "\x1b[39m"),
-		gray: init("\x1b[90m", "\x1b[39m"),
-
-		bgBlack: init("\x1b[40m", "\x1b[49m"),
-		bgRed: init("\x1b[41m", "\x1b[49m"),
-		bgGreen: init("\x1b[42m", "\x1b[49m"),
-		bgYellow: init("\x1b[43m", "\x1b[49m"),
-		bgBlue: init("\x1b[44m", "\x1b[49m"),
-		bgMagenta: init("\x1b[45m", "\x1b[49m"),
-		bgCyan: init("\x1b[46m", "\x1b[49m"),
-		bgWhite: init("\x1b[47m", "\x1b[49m"),
-
-		blackBright: init("\x1b[90m", "\x1b[39m"),
-		redBright: init("\x1b[91m", "\x1b[39m"),
-		greenBright: init("\x1b[92m", "\x1b[39m"),
-		yellowBright: init("\x1b[93m", "\x1b[39m"),
-		blueBright: init("\x1b[94m", "\x1b[39m"),
-		magentaBright: init("\x1b[95m", "\x1b[39m"),
-		cyanBright: init("\x1b[96m", "\x1b[39m"),
-		whiteBright: init("\x1b[97m", "\x1b[39m"),
-
-		bgBlackBright: init("\x1b[100m","\x1b[49m"),
-		bgRedBright: init("\x1b[101m","\x1b[49m"),
-		bgGreenBright: init("\x1b[102m","\x1b[49m"),
-		bgYellowBright: init("\x1b[103m","\x1b[49m"),
-		bgBlueBright: init("\x1b[104m","\x1b[49m"),
-		bgMagentaBright: init("\x1b[105m","\x1b[49m"),
-		bgCyanBright: init("\x1b[106m","\x1b[49m"),
-		bgWhiteBright: init("\x1b[107m","\x1b[49m"),
-	}
-}
-
-module.exports = createColors()
-module.exports.createColors = createColors
 
 
 /***/ }),
@@ -49482,14 +49472,6 @@ module.exports = require("tls");
 
 /***/ }),
 
-/***/ 2018:
-/***/ ((module) => {
-
-"use strict";
-module.exports = require("tty");
-
-/***/ }),
-
 /***/ 7016:
 /***/ ((module) => {
 
@@ -59845,20 +59827,8 @@ exports.Minipass = Minipass;
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
-
-
-var lodash = __nccwpck_require__(2356);
-var path = __nccwpck_require__(6928);
-var ajv = __nccwpck_require__(2965);
-var promises = __nccwpck_require__(1943);
-var picocolors = __nccwpck_require__(7336);
-var glob = __nccwpck_require__(3529);
-var process = __nccwpck_require__(932);
-var child_process = __nccwpck_require__(5317);
-var os = __nccwpck_require__(857);
-
-var q=t=>{throw TypeError(t)};var yt=(t,r,o)=>r.has(t)||q("Cannot "+o);var U=(t,r,o)=>(yt(t,r,"read from private field"),o?o.call(t):r.get(t)),G=(t,r,o)=>r.has(t)?q("Cannot add the same private member more than once"):r instanceof WeakSet?r.add(t):r.set(t,o);var l=class{constructor(r,o){this.output=r;this.verbose=o;}async group(r,o){this.output.group(r);try{return await o()}finally{this.output.groupEnd();}}info(r){this.output.log(r);}warning(r){this.output.warn(picocolors.yellow(r.toString()));}error(r){this.output.error(r);}debug(r){this.verbose&&this.output.debug(r);}};var e=new l(console,!1),V=t=>{e=t;};var d=t=>r=>(t(r),r);var y=(t,r)=>promises.writeFile(t,r,"utf-8").then(d(()=>e.debug(`File ${t} written`))).catch(d(()=>e.error(`Error while writing file ${t}`))),J=(t,r)=>promises.copyFile(t,r).then(d(()=>e.debug(`Copied file ${t} to ${r}`))).catch(d(()=>e.error(`Error while writing file ${t}`))),N=t=>promises.mkdir(t,{recursive:!0}).then(()=>e.debug(`Created directory ${t}`)).catch(d(()=>e.error(`Error while writing file ${t}`))),P=t=>promises.readFile(t,"utf8").then(d(()=>e.debug(`Read file ${t}`))).catch(d(()=>e.error(`Error while reading file ${t}`))),W=(t,r)=>promises.rm(t,r).then(d(()=>e.debug(`Removed ${t}`))).catch(d(()=>e.error(`Error while removing ${t}`)));var h=class extends Error{constructor(r){let o=r??[{message:"Unknown error"}];super(o.map(i=>i.message).join(`
-`));}};var Y=new ajv.Ajv().compile({type:"object",properties:{project_name:{type:"string"},tag:{type:"string"},previous_tag:{type:"string"},version:{type:"string"},commit:{type:"string"},date:{type:"string"},runtime:{type:"object",properties:{goos:{type:"string"},goarch:{type:"string"}},required:["goarch","goos"]}},required:["commit","date","previous_tag","project_name","runtime","tag","version"]}),$=async t=>{let r=JSON.parse(await P(t));if(Y(r))return r;throw new h(Y.errors)};var K=new ajv.Ajv().compile({items:{type:"object",additionalProperties:!0,properties:{name:{type:"string"},path:{type:"string"},internal_type:{type:"integer"},type:{type:"string"},goos:{type:"string"},goarch:{type:"string"},extra:{type:"object",additionalProperties:!0,properties:{Binary:{type:"string"},Ext:{type:"string"},ID:{type:"string"}},required:["Binary","Ext","ID"]},goamd64:{type:"string"}},required:["internal_type","name","path","type"]},type:"array"}),k=async t=>{let r=JSON.parse(await P(t));if(K(r))return r;throw new h(K.errors)};var L=async(t,r)=>{await y(t,JSON.stringify(r,null,2));};var f=class{projectPath;constructor(r){this.projectPath=path.resolve(process.cwd(),r);}get artifactsPath(){return path.join(this.projectPath,"dist","artifacts.json")}get metadataPath(){return path.join(this.projectPath,"dist","metadata.json")}get distPath(){return path.join(this.projectPath,"dist","npm")}project(...r){return path.join(this.projectPath,...r)}packageFolder(...[r,...o]){return path.join(this.distPath,lodash.kebabCase(r),...o)}packageJson(r){return path.join(this.projectPath,"dist","npm",lodash.kebabCase(r),"package.json")}};var j=t=>r=>r.type==="Binary"&&r.extra.ID===t;var M=(t,r)=>{if(!(t!=null&&t.length))throw new Error(r??"Value should not be empty")};var X=(t,r)=>glob.glob(r,{cwd:t,nocase:!0,ignore:["node_modules/**","dist/"]}).then(d(o=>{e.debug("Lookup files by globs"),r.forEach(i=>e.debug(i)),e.debug(`In folder ${t}`),e.debug("Founded:"),o.forEach(i=>e.debug(i));}));var E,R=class R extends String{constructor(){super(...arguments);G(this,E,!0);}static isCode(o){return o instanceof R&&U(o,E)}};E=new WeakMap;var w=R;var _t=t=>{let r=t.getFullYear(),o=t.getMonth(),i=t.getDate(),n=t.getHours(),a=t.getMinutes(),c=t.getSeconds(),s=t.getMilliseconds();return `new Date(${r}, ${o}, ${i}, ${n}, ${a}, ${c}, ${s})`},Ct=t=>{let r=Object.entries(t).map(([o,i])=>`${o}: ${v(i)}`);return lodash.isEmpty(t)?"{}":`{ ${r.join(", ")} }`},At=t=>lodash.isEmpty(t)?"[]":`[ ${t.map(v).join(", ")} ]`,v=t=>{switch(!0){case w.isCode(t):return t.toString();case typeof t=="string":return `'${t}'`;case typeof t=="number":return t.toString();case typeof t=="boolean":return t.toString();case t===null:return "null";case t===void 0:return "undefined";case t instanceof Date:return _t(t);case typeof t=="symbol":return `Symbol('${t.description}')`;case Array.isArray(t):return At(t);case(typeof t=="object"&&(t==null?void 0:t.constructor.name)==="Object"):return Ct(t)}throw new Error(`Unsupported type: ${typeof t}`)};var tt=(t,...r)=>{let o=t.reduce((i,n,a)=>i+v(r[a-1])+n);return new w(o)};var F=tt;var Ot={amd64:"x64",386:"ia32",arm:"arm",arm64:"arm64",s390x:"s390x",s390:"s390",riscv64:"riscv64",ppc64:"ppc64",ppc:"ppc",mips:"mips"},rt=t=>{let r=Ot[t];if(!r)throw new Error(`${t} is not supported`);return r};var St={darwin:"darwin",linux:"linux",windows:"win32",android:"android",aix:"aix",freebsd:"freebsd",openbsd:"openbsd",solaris:"sunos",netbsd:"netbsd"},et=t=>{let r=St[t];if(!r)throw new Error(`${t} is not supported`);return r};var _=(t,r,o)=>({name:`${r.project_name}_${t.goos}_${t.goarch}`,version:r.version,os:et(t.goos),cpu:rt(t.goarch),bin:`${t.extra.Binary}${t.extra.Ext}`,sourceBinary:t.path,destinationBinary:t.path,files:o}),C=(t,r,o,i)=>nt({name:B(t,o),description:r,version:t.version,bin:{[t.name]:t.bin},os:[t.os],cpu:[t.cpu],files:i}),B=(t,r)=>"project_name"in t?lodash.isEmpty(r)?t.project_name:`${r}/${t.project_name}`:lodash.isEmpty(r)?t.name:`${r}/${t.name}`,A=(t,r,o,i,n)=>nt({name:B(r,i),description:o,version:r.version,bin:{[r.project_name]:"index.js"},optionalDependencies:t.reduce((a,c)=>({...a,[B(c,i)]:r.version}),{}),os:lodash.uniq(t.map(a=>a.os)),cpu:lodash.uniq(t.map(a=>a.cpu)),files:n}),nt=({description:t,...r})=>t?{...r,description:t}:r;var at=async(t,r,o)=>{for(let i of o){let n=t.project(i),a=t.packageFolder(r,i);await J(n,a);}},O=async t=>{let r=new f(t.project);e.debug(`Start build package in ${r.project()}`);let o=await k(r.artifactsPath);M(o,"Couldn\u2019t find any artifacts."),e.debug(`Found ${o.length} artifact(s)`),t.verbose&&o.forEach(p=>e.debug(`${p.name}: ${p.path}`));let i=await $(r.metadataPath);t.verbose&&await e.group("Loaded metadata:",()=>(e.debug(`project_name: ${i.project_name}`),e.debug(`tag: ${i.tag}`),e.debug(`previous_tag: ${i.previous_tag}`),e.debug(`version: ${i.version}`),e.debug(`commit: ${i.commit}`),e.debug(`date: ${i.date.toISOString()}`),e.debug(`runtime_goos: ${i.runtime.goos}`),e.debug(`runtime_goarch: ${i.runtime.goarch}`),Promise.resolve()));let n=[],a=t.builder??i.project_name,c=o.filter(j(a));M(c,`Couldn\u2019t find any binary artifacts from ${a} builder`),e.debug(`Found ${c.length} artifact(s)`);let s=await X(t.project,t.files);if(t.verbose){e.debug(`Found ${s.length} files:`);for(let p of s)e.debug(`${p}: ${p}`);}for(let p of c){let m=p.path.split(path.sep);await e.group(`Built package ${m[1]}`,async()=>{let T=path.join(t.project,p.path),{base:ft}=path.parse(p.path),D=r.packageFolder(m[1]);await N(D),e.debug(`Created package path: ${D}`);let ut=path.join(D,ft),x=_(p,i,s);e.debug(`Created package ${x.name}: ${x.destinationBinary}`),n.push(x),await J(T,ut);let lt=C(x,t.description,t.prefix,s),z=r.packageJson(m[1]);await L(z,lt),e.debug(`Written package json file: ${z}`),await at(r,m[1],s),e.debug(`Copied ${s.length} extra file(s)`);});}e.debug(`Built ${n.length} platform package(s)`);let g=A(n,i,t.description,t.prefix,s);await N(r.packageFolder(i.project_name)),e.debug(`Created package path: ${r.packageFolder(i.project_name)}`),await L(r.packageJson(i.project_name),g),e.debug(`Written package json file: ${r.packageJson(i.project_name)}`);let u=path.join(r.packageFolder(i.project_name),"index.js");await y(u,Lt(n,t.prefix)),e.debug(`Written package index.js file: ${u}`),await at(r,i.project_name,s),e.debug(`Copied ${s.length} extra file(s)`);},Nt=(t,r)=>t?[r]:[],Lt=(t,r)=>{let o=t.reduce((a,c)=>({...a,[`${c.os}_${c.cpu}`]:[...Nt(!!r,r),c.name,c.bin]}),{}),i=lodash.isEmpty(r)?F`path.dirname(__dirname)`:F`path.dirname(path.dirname(__dirname))`;return F`#!/usr/bin/env node
+var lodash=__nccwpck_require__(2356),path=__nccwpck_require__(6928),ajv=__nccwpck_require__(2965),promises=__nccwpck_require__(1943),picocolors=__nccwpck_require__(6642),glob=__nccwpck_require__(3529),process=__nccwpck_require__(932),child_process=__nccwpck_require__(5317),os=__nccwpck_require__(857);var q=t=>{throw TypeError(t)};var yt=(t,r,o)=>r.has(t)||q("Cannot "+o);var U=(t,r,o)=>(yt(t,r,"read from private field"),o?o.call(t):r.get(t)),G=(t,r,o)=>r.has(t)?q("Cannot add the same private member more than once"):r instanceof WeakSet?r.add(t):r.set(t,o);var l=class{constructor(r,o){this.output=r;this.verbose=o;}async group(r,o){this.output.group(r);try{return await o()}finally{this.output.groupEnd();}}info(r){this.output.log(r);}warning(r){this.output.warn(picocolors.yellow(r.toString()));}error(r){this.output.error(r);}debug(r){this.verbose&&this.output.debug(r);}};var e=new l(console,!1),V=t=>{e=t;};var d=t=>r=>(t(r),r);var y=(t,r)=>promises.writeFile(t,r,"utf-8").then(d(()=>e.debug(`File ${t} written`))).catch(d(()=>e.error(`Error while writing file ${t}`))),J=(t,r)=>promises.copyFile(t,r).then(d(()=>e.debug(`Copied file ${t} to ${r}`))).catch(d(()=>e.error(`Error while writing file ${t}`))),N=t=>promises.mkdir(t,{recursive:!0}).then(()=>e.debug(`Created directory ${t}`)).catch(d(()=>e.error(`Error while writing file ${t}`))),P=t=>promises.readFile(t,"utf8").then(d(()=>e.debug(`Read file ${t}`))).catch(d(()=>e.error(`Error while reading file ${t}`))),W=(t,r)=>promises.rm(t,r).then(d(()=>e.debug(`Removed ${t}`))).catch(d(()=>e.error(`Error while removing ${t}`)));var h=class extends Error{constructor(r){let o=r??[{message:"Unknown error"}];super(o.map(i=>i.message).join(`
+`));}};var Y=new ajv.Ajv().compile({type:"object",properties:{project_name:{type:"string"},tag:{type:"string"},previous_tag:{type:"string"},version:{type:"string"},commit:{type:"string"},date:{type:"string"},runtime:{type:"object",properties:{goos:{type:"string"},goarch:{type:"string"}},required:["goarch","goos"]}},required:["commit","date","previous_tag","project_name","runtime","tag","version"]}),$=async t=>{let r=JSON.parse(await P(t));if(Y(r))return r;throw new h(Y.errors)};var K=new ajv.Ajv().compile({items:{type:"object",additionalProperties:!0,properties:{name:{type:"string"},path:{type:"string"},internal_type:{type:"integer"},type:{type:"string"},goos:{type:"string"},goarch:{type:"string"},extra:{type:"object",additionalProperties:!0,properties:{Binary:{type:"string"},Ext:{type:"string"},ID:{type:"string"}},required:["Binary","Ext","ID"]},goamd64:{type:"string"}},required:["internal_type","name","path","type"]},type:"array"}),k=async t=>{let r=JSON.parse(await P(t));if(K(r))return r;throw new h(K.errors)};var L=async(t,r)=>{await y(t,JSON.stringify(r,null,2));};var f=class{projectPath;constructor(r){this.projectPath=path.resolve(process.cwd(),r);}get artifactsPath(){return path.join(this.projectPath,"dist","artifacts.json")}get metadataPath(){return path.join(this.projectPath,"dist","metadata.json")}get distPath(){return path.join(this.projectPath,"dist","npm")}project(...r){return path.join(this.projectPath,...r)}packageFolder(...[r,...o]){return path.join(this.distPath,lodash.kebabCase(r),...o)}packageJson(r){return path.join(this.projectPath,"dist","npm",lodash.kebabCase(r),"package.json")}};var j=t=>r=>r.type==="Binary"&&r.extra.ID===t;var M=(t,r)=>{if(!(t!=null&&t.length))throw new Error(r??"Value should not be empty")};var X=(t,r)=>glob.glob(r,{cwd:t,nocase:!0,ignore:["node_modules/**","dist/"]}).then(d(o=>{e.debug("Lookup files by globs"),r.forEach(i=>e.debug(i)),e.debug(`In folder ${t}`),e.debug("Founded:"),o.forEach(i=>e.debug(i));}));var E,R=class R extends String{constructor(){super(...arguments);G(this,E,!0);}static isCode(o){return o instanceof R&&U(o,E)}};E=new WeakMap;var w=R;var _t=t=>{let r=t.getFullYear(),o=t.getMonth(),i=t.getDate(),n=t.getHours(),a=t.getMinutes(),c=t.getSeconds(),s=t.getMilliseconds();return `new Date(${r}, ${o}, ${i}, ${n}, ${a}, ${c}, ${s})`},Ct=t=>{let r=Object.entries(t).map(([o,i])=>`${o}: ${v(i)}`);return lodash.isEmpty(t)?"{}":`{ ${r.join(", ")} }`},At=t=>lodash.isEmpty(t)?"[]":`[ ${t.map(v).join(", ")} ]`,v=t=>{switch(!0){case w.isCode(t):return t.toString();case typeof t=="string":return `'${t}'`;case typeof t=="number":return t.toString();case typeof t=="boolean":return t.toString();case t===null:return "null";case t===void 0:return "undefined";case t instanceof Date:return _t(t);case typeof t=="symbol":return `Symbol('${t.description}')`;case Array.isArray(t):return At(t);case(typeof t=="object"&&(t==null?void 0:t.constructor.name)==="Object"):return Ct(t)}throw new Error(`Unsupported type: ${typeof t}`)};var tt=(t,...r)=>{let o=t.reduce((i,n,a)=>i+v(r[a-1])+n);return new w(o)};var F=tt;var Ot={amd64:"x64",386:"ia32",arm:"arm",arm64:"arm64",s390x:"s390x",s390:"s390",riscv64:"riscv64",ppc64:"ppc64",ppc:"ppc",mips:"mips"},rt=t=>{let r=Ot[t];if(!r)throw new Error(`${t} is not supported`);return r};var St={darwin:"darwin",linux:"linux",windows:"win32",android:"android",aix:"aix",freebsd:"freebsd",openbsd:"openbsd",solaris:"sunos",netbsd:"netbsd"},et=t=>{let r=St[t];if(!r)throw new Error(`${t} is not supported`);return r};var _=(t,r,o)=>({name:`${r.project_name}_${t.goos}_${t.goarch}`,version:r.version,os:et(t.goos),cpu:rt(t.goarch),bin:`${t.extra.Binary}${t.extra.Ext}`,sourceBinary:t.path,destinationBinary:t.path,files:o}),C=(t,r,o,i)=>nt({name:B(t,o),description:r,version:t.version,bin:{[t.name]:t.bin},os:[t.os],cpu:[t.cpu],files:i}),B=(t,r)=>"project_name"in t?lodash.isEmpty(r)?t.project_name:`${r}/${t.project_name}`:lodash.isEmpty(r)?t.name:`${r}/${t.name}`,A=(t,r,o,i,n)=>nt({name:B(r,i),description:o,version:r.version,bin:{[r.project_name]:"index.js"},optionalDependencies:t.reduce((a,c)=>({...a,[B(c,i)]:r.version}),{}),os:lodash.uniq(t.map(a=>a.os)),cpu:lodash.uniq(t.map(a=>a.cpu)),files:n}),nt=({description:t,...r})=>t?{...r,description:t}:r;var at=async(t,r,o)=>{for(let i of o){let n=t.project(i),a=t.packageFolder(r,i);await J(n,a);}},O=async t=>{let r=new f(t.project);e.debug(`Start build package in ${r.project()}`);let o=await k(r.artifactsPath);M(o,"Couldn\u2019t find any artifacts."),e.debug(`Found ${o.length} artifact(s)`),t.verbose&&o.forEach(p=>e.debug(`${p.name}: ${p.path}`));let i=await $(r.metadataPath);t.verbose&&await e.group("Loaded metadata:",()=>(e.debug(`project_name: ${i.project_name}`),e.debug(`tag: ${i.tag}`),e.debug(`previous_tag: ${i.previous_tag}`),e.debug(`version: ${i.version}`),e.debug(`commit: ${i.commit}`),e.debug(`date: ${i.date}`),e.debug(`runtime_goos: ${i.runtime.goos}`),e.debug(`runtime_goarch: ${i.runtime.goarch}`),Promise.resolve()));let n=[],a=t.builder??i.project_name,c=o.filter(j(a));M(c,`Couldn\u2019t find any binary artifacts from ${a} builder`),e.debug(`Found ${c.length} artifact(s)`);let s=await X(t.project,t.files);if(t.verbose){e.debug(`Found ${s.length} files:`);for(let p of s)e.debug(`${p}: ${p}`);}for(let p of c){let m=p.path.split(path.sep);await e.group(`Built package ${m[1]}`,async()=>{let T=path.join(t.project,p.path),{base:ft}=path.parse(p.path),D=r.packageFolder(m[1]);await N(D),e.debug(`Created package path: ${D}`);let ut=path.join(D,ft),x=_(p,i,s);e.debug(`Created package ${x.name}: ${x.destinationBinary}`),n.push(x),await J(T,ut);let lt=C(x,t.description,t.prefix,s),z=r.packageJson(m[1]);await L(z,lt),e.debug(`Written package json file: ${z}`),await at(r,m[1],s),e.debug(`Copied ${s.length} extra file(s)`);});}e.debug(`Built ${n.length} platform package(s)`);let g=A(n,i,t.description,t.prefix,s);await N(r.packageFolder(i.project_name)),e.debug(`Created package path: ${r.packageFolder(i.project_name)}`),await L(r.packageJson(i.project_name),g),e.debug(`Written package json file: ${r.packageJson(i.project_name)}`);let u=path.join(r.packageFolder(i.project_name),"index.js");await y(u,Lt(n,t.prefix)),e.debug(`Written package index.js file: ${u}`),await at(r,i.project_name,s),e.debug(`Copied ${s.length} extra file(s)`);},Nt=(t,r)=>t?[r]:[],Lt=(t,r)=>{let o=t.reduce((a,c)=>({...a,[`${c.os}_${c.cpu}`]:[...Nt(!!r,r),c.name,c.bin]}),{}),i=lodash.isEmpty(r)?F`path.dirname(__dirname)`:F`path.dirname(path.dirname(__dirname))`;return F`#!/usr/bin/env node
 const path = require('path');
 const child_process = require('child_process');
 const mapping = ${o};
@@ -59869,13 +59839,7 @@ child_process.spawn(packagePath, process.argv.splice(2), {
   stdio: 'inherit',
   env: process.env,
 });`.toString()};var st=async(t,r,o)=>{await e.group(`${r.name}@${r.version}`,()=>{if(r.description&&e.info(`description: ${r.description}`),e.info(`os: ${r.os.join(", ")}`),e.info(`cpu: ${r.cpu.join(", ")}`),o&&e.info(`bin: ${t.packageFolder(o.sourceBinary)}`),r.optionalDependencies){e.debug("  optionalDependencies:");for(let[i,n]of Object.entries(r.optionalDependencies))e.debug(`    ${i}@${n}`);}return Promise.resolve()});},ct=async t=>{let r=new f(t.project),o=await $(r.metadataPath),i=await k(r.artifactsPath),n=t.builder??o.project_name,a=i.filter(j(n)).map(s=>{let g=_(s,o,[]);return {definition:g,json:C(g,t.description,t.prefix,[])}}),c=A(a.map(({definition:s})=>s),o,t.description,t.prefix,[]);await e.group("Main package:",()=>st(r,c)),e.info(""),await e.group("Platform packages:",async()=>{for(let{definition:s,json:g}of a)e.debug(""),await st(r,g,s);});};var mt=async(t,r)=>{if(!t.token)return e.debug("No token provided"),await r({...process.env});e.debug(`Founded token: *****[len:${t.token.length}]`);let o=path.resolve(t.pwd??process.cwd(),".npmrc");try{return await y(o,It(t.token).join(os.EOL)),await r({...process.env,NPM_TOKEN:t.token})}finally{await W(o,{force:!0});}},It=t=>["; THIS_FILE_WAS_GENERATED_BY GORELEASER_NPM_PUBLISHER","; PLEASE_DO_NOT_TOUCH_IT!",`//registry.npmjs.org/:_authToken=${t}`];var S=class extends Error{code;summary;detail;constructor(r){super(`[${r.code}]: ${r.summary}`),this.summary=r.summary,this.detail=r.detail,this.code=r.code;}};var H=async(t,r)=>{let o=os.platform()==="win32",i=o?"npm.cmd":"npm";return mt(r??{},a=>new Promise((c,s)=>{let g=child_process.spawn(i,["--json",...t],{cwd:(r==null?void 0:r.pwd)??process.cwd(),env:a,shell:o}),u="",p="";g.stdout.on("data",m=>u+=m),g.stderr.on("data",m=>p+=m),g.on("close",m=>{if(m){let T=JSON.parse(u);s(new S(T.error));}c(JSON.parse(u));}),g.on("error",m=>s(m));}))};var dt=async(t,r)=>H(["publish","--access","public"],{pwd:t,token:r==null?void 0:r.token});var gt=async t=>{await O(t);let r=new f(t.project),o=lodash.sortBy(await promises.readdir(r.distPath),i=>-i.length);for(let i of o){e.info(r.packageFolder(i));let n=await dt(r.packageFolder(i),{token:t.token});await e.group(`Successfully published ${n.id}`,async()=>{e.info(`Name: ${n.name}`),e.info(`Version: ${n.version}`),e.info(`Size: ${n.size}`),e.info(`Unpacked size: ${n.unpackedSize}`),e.info(`SHA sum: ${n.shasum}`),e.info(`Integrity: ${n.integrity}`);for(let a of n.files)await e.group(`Filename: ${a.path}`,()=>(e.info(`Size: ${a.size}`),e.info(`Mode: ${a.mode}`),Promise.resolve()));e.info(`Entry count: ${n.entryCount}`);});}};var uo=gt,lo=ct,yo=O;
-
-exports.ConsoleLogger = l;
-exports.build = yo;
-exports.list = lo;
-exports.publish = uo;
-exports.setLogger = V;
-
+exports.ConsoleLogger=l;exports.build=yo;exports.list=lo;exports.publish=uo;exports.setLogger=V;
 
 /***/ }),
 
