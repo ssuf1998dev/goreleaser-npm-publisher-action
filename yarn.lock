@@ -2572,9 +2572,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"goreleaser-npm-publisher@npm:^1.0.0-beta.4":
-  version: 1.0.0-beta.4
-  resolution: "goreleaser-npm-publisher@npm:1.0.0-beta.4"
+"goreleaser-npm-publisher@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "goreleaser-npm-publisher@npm:1.0.0"
   dependencies:
     ajv: "npm:^8.17.1"
     glob: "npm:^11.0.0"
@@ -2583,7 +2583,7 @@ __metadata:
     yargs: "npm:^17.7.2"
   bin:
     goreleaser-npm-publisher: dist/cli.cjs
-  checksum: 10c0/fb40a00692ce04ff7b613e8c1c5a29f101164440cf31e4ebc687701957b22ec76afafcca4e9e7ad73c804a3facd49ecf80552e5b3af092b00885029ad47964d3
+  checksum: 10c0/47b04c1a636069156e04eb3cb8423e20e86af4f2a54aeded9660a878ad671e9b7aac85cbcdbd894cd784744b512b36f5a862bfbf4cfad2ac46b330fc5f6863c0
   languageName: node
   linkType: hard
 
@@ -4796,7 +4796,7 @@ __metadata:
     eslint-plugin-jest: "npm:^28.8.3"
     eslint-plugin-jsonc: "npm:^2.16.0"
     eslint-plugin-prettier: "npm:^5.2.1"
-    goreleaser-npm-publisher: "npm:^1.0.0-beta.4"
+    goreleaser-npm-publisher: "npm:^1.0.0"
     jest: "npm:^29.7.0"
     make-coverage-badge: "npm:^1.2.0"
     prettier: "npm:^3.3.3"
