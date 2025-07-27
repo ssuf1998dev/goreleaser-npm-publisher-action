@@ -1,7 +1,7 @@
 {
-  "name": "typescript-action",
-  "description": "GitHub Actions TypeScript template",
-  "version": "1.1.0",
+  "name": "goreleaser-npm-publisher-action",
+  "description": "Build and publish npm packages based on goreleaser output folder",
+  "version": "1.1.0-1.0.0",
   "author": "",
   "private": true,
   "homepage": "https://github.com/actions/typescript-action",
@@ -67,7 +67,7 @@
   },
   "dependencies": {
     "@actions/core": "^1.11.1",
-    "goreleaser-npm-publisher": "^1.1.0"
+    "@ssuf1998dev/goreleaser-npm-publisher": "~1.1.0-0"
   },
   "devDependencies": {
     "@jest/globals": "^29.7.0",

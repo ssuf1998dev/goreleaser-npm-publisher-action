@@ -1,7 +1,7 @@
-import { type Logger } from 'goreleaser-npm-publisher';
+import { type Logger } from '@ssuf1998dev/goreleaser-npm-publisher';
 
 let setLogger: Logger | undefined = undefined;
-jest.mock('goreleaser-npm-publisher', () => ({
+jest.mock('@ssuf1998dev/goreleaser-npm-publisher', () => ({
   setLogger: (newLogger: Logger) => (setLogger = newLogger),
 }));
 

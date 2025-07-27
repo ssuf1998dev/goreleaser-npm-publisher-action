@@ -1,5 +1,5 @@
 import { debug, error, group, info, warning } from '@actions/core';
-import { Logger } from 'goreleaser-npm-publisher';
+import { Logger } from '@ssuf1998dev/goreleaser-npm-publisher';
 
 export class GithubActionLogger implements Logger {
   async group<T>(name: string, fn: () => Promise<T>): Promise<T> {

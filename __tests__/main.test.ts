@@ -1,4 +1,4 @@
-jest.mock('goreleaser-npm-publisher', () => ({
+jest.mock('@ssuf1998dev/goreleaser-npm-publisher', () => ({
   publish: jest.fn(),
   setLogger: jest.fn(),
 }));
@@ -9,7 +9,7 @@ jest.mock('../src/inputs', () => ({
   stringArray: jest.fn(),
 }));
 
-import { publish } from 'goreleaser-npm-publisher';
+import { publish } from '@ssuf1998dev/goreleaser-npm-publisher';
 import { cwd } from 'node:process';
 import { boolean, string, stringArray } from '../src/inputs';
 import { run } from '../src/main';

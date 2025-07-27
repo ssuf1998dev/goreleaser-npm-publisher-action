@@ -3195,351 +3195,17 @@ function copyFile(srcFile, destFile, force) {
 
 /***/ }),
 
-/***/ 9380:
-/***/ ((module) => {
-
-"use strict";
-
-module.exports = balanced;
-function balanced(a, b, str) {
-  if (a instanceof RegExp) a = maybeMatch(a, str);
-  if (b instanceof RegExp) b = maybeMatch(b, str);
-
-  var r = range(a, b, str);
-
-  return r && {
-    start: r[0],
-    end: r[1],
-    pre: str.slice(0, r[0]),
-    body: str.slice(r[0] + a.length, r[1]),
-    post: str.slice(r[1] + b.length)
-  };
-}
-
-function maybeMatch(reg, str) {
-  var m = str.match(reg);
-  return m ? m[0] : null;
-}
-
-balanced.range = range;
-function range(a, b, str) {
-  var begs, beg, left, right, result;
-  var ai = str.indexOf(a);
-  var bi = str.indexOf(b, ai + 1);
-  var i = ai;
-
-  if (ai >= 0 && bi > 0) {
-    if(a===b) {
-      return [ai, bi];
-    }
-    begs = [];
-    left = str.length;
-
-    while (i >= 0 && !result) {
-      if (i == ai) {
-        begs.push(i);
-        ai = str.indexOf(a, i + 1);
-      } else if (begs.length == 1) {
-        result = [ begs.pop(), bi ];
-      } else {
-        beg = begs.pop();
-        if (beg < left) {
-          left = beg;
-          right = bi;
-        }
-
-        bi = str.indexOf(b, i + 1);
-      }
-
-      i = ai < bi && ai >= 0 ? ai : bi;
-    }
-
-    if (begs.length) {
-      result = [ left, right ];
-    }
-  }
-
-  return result;
-}
-
-
-/***/ }),
-
-/***/ 4691:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var balanced = __nccwpck_require__(9380);
-
-module.exports = expandTop;
-
-var escSlash = '\0SLASH'+Math.random()+'\0';
-var escOpen = '\0OPEN'+Math.random()+'\0';
-var escClose = '\0CLOSE'+Math.random()+'\0';
-var escComma = '\0COMMA'+Math.random()+'\0';
-var escPeriod = '\0PERIOD'+Math.random()+'\0';
-
-function numeric(str) {
-  return parseInt(str, 10) == str
-    ? parseInt(str, 10)
-    : str.charCodeAt(0);
-}
-
-function escapeBraces(str) {
-  return str.split('\\\\').join(escSlash)
-            .split('\\{').join(escOpen)
-            .split('\\}').join(escClose)
-            .split('\\,').join(escComma)
-            .split('\\.').join(escPeriod);
-}
-
-function unescapeBraces(str) {
-  return str.split(escSlash).join('\\')
-            .split(escOpen).join('{')
-            .split(escClose).join('}')
-            .split(escComma).join(',')
-            .split(escPeriod).join('.');
-}
-
-
-// Basically just str.split(","), but handling cases
-// where we have nested braced sections, which should be
-// treated as individual members, like {a,{b,c},d}
-function parseCommaParts(str) {
-  if (!str)
-    return [''];
-
-  var parts = [];
-  var m = balanced('{', '}', str);
-
-  if (!m)
-    return str.split(',');
-
-  var pre = m.pre;
-  var body = m.body;
-  var post = m.post;
-  var p = pre.split(',');
-
-  p[p.length-1] += '{' + body + '}';
-  var postParts = parseCommaParts(post);
-  if (post.length) {
-    p[p.length-1] += postParts.shift();
-    p.push.apply(p, postParts);
-  }
-
-  parts.push.apply(parts, p);
-
-  return parts;
-}
-
-function expandTop(str) {
-  if (!str)
-    return [];
-
-  // I don't know why Bash 4.3 does this, but it does.
-  // Anything starting with {} will have the first two bytes preserved
-  // but *only* at the top level, so {},a}b will not expand to anything,
-  // but a{},b}c will be expanded to [a}c,abc].
-  // One could argue that this is a bug in Bash, but since the goal of
-  // this module is to match Bash's rules, we escape a leading {}
-  if (str.substr(0, 2) === '{}') {
-    str = '\\{\\}' + str.substr(2);
-  }
-
-  return expand(escapeBraces(str), true).map(unescapeBraces);
-}
-
-function embrace(str) {
-  return '{' + str + '}';
-}
-function isPadded(el) {
-  return /^-?0\d/.test(el);
-}
-
-function lte(i, y) {
-  return i <= y;
-}
-function gte(i, y) {
-  return i >= y;
-}
-
-function expand(str, isTop) {
-  var expansions = [];
-
-  var m = balanced('{', '}', str);
-  if (!m) return [str];
-
-  // no need to expand pre, since it is guaranteed to be free of brace-sets
-  var pre = m.pre;
-  var post = m.post.length
-    ? expand(m.post, false)
-    : [''];
-
-  if (/\$$/.test(m.pre)) {    
-    for (var k = 0; k < post.length; k++) {
-      var expansion = pre+ '{' + m.body + '}' + post[k];
-      expansions.push(expansion);
-    }
-  } else {
-    var isNumericSequence = /^-?\d+\.\.-?\d+(?:\.\.-?\d+)?$/.test(m.body);
-    var isAlphaSequence = /^[a-zA-Z]\.\.[a-zA-Z](?:\.\.-?\d+)?$/.test(m.body);
-    var isSequence = isNumericSequence || isAlphaSequence;
-    var isOptions = m.body.indexOf(',') >= 0;
-    if (!isSequence && !isOptions) {
-      // {a},b}
-      if (m.post.match(/,.*\}/)) {
-        str = m.pre + '{' + m.body + escClose + m.post;
-        return expand(str);
-      }
-      return [str];
-    }
-
-    var n;
-    if (isSequence) {
-      n = m.body.split(/\.\./);
-    } else {
-      n = parseCommaParts(m.body);
-      if (n.length === 1) {
-        // x{{a,b}}y ==> x{a}y x{b}y
-        n = expand(n[0], false).map(embrace);
-        if (n.length === 1) {
-          return post.map(function(p) {
-            return m.pre + n[0] + p;
-          });
-        }
-      }
-    }
-
-    // at this point, n is the parts, and we know it's not a comma set
-    // with a single entry.
-    var N;
-
-    if (isSequence) {
-      var x = numeric(n[0]);
-      var y = numeric(n[1]);
-      var width = Math.max(n[0].length, n[1].length)
-      var incr = n.length == 3
-        ? Math.abs(numeric(n[2]))
-        : 1;
-      var test = lte;
-      var reverse = y < x;
-      if (reverse) {
-        incr *= -1;
-        test = gte;
-      }
-      var pad = n.some(isPadded);
-
-      N = [];
-
-      for (var i = x; test(i, y); i += incr) {
-        var c;
-        if (isAlphaSequence) {
-          c = String.fromCharCode(i);
-          if (c === '\\')
-            c = '';
-        } else {
-          c = String(i);
-          if (pad) {
-            var need = width - c.length;
-            if (need > 0) {
-              var z = new Array(need + 1).join('0');
-              if (i < 0)
-                c = '-' + z + c.slice(1);
-              else
-                c = z + c;
-            }
-          }
-        }
-        N.push(c);
-      }
-    } else {
-      N = [];
-
-      for (var j = 0; j < n.length; j++) {
-        N.push.apply(N, expand(n[j], false));
-      }
-    }
-
-    for (var j = 0; j < N.length; j++) {
-      for (var k = 0; k < post.length; k++) {
-        var expansion = pre + N[j] + post[k];
-        if (!isTop || isSequence || expansion)
-          expansions.push(expansion);
-      }
-    }
-  }
-
-  return expansions;
-}
-
-
-
-/***/ }),
-
-/***/ 3430:
-/***/ ((module) => {
-
-"use strict";
-
-
-// do not edit .js files directly - edit src/index.jst
-
-
-
-module.exports = function equal(a, b) {
-  if (a === b) return true;
-
-  if (a && b && typeof a == 'object' && typeof b == 'object') {
-    if (a.constructor !== b.constructor) return false;
-
-    var length, i, keys;
-    if (Array.isArray(a)) {
-      length = a.length;
-      if (length != b.length) return false;
-      for (i = length; i-- !== 0;)
-        if (!equal(a[i], b[i])) return false;
-      return true;
-    }
-
-
-
-    if (a.constructor === RegExp) return a.source === b.source && a.flags === b.flags;
-    if (a.valueOf !== Object.prototype.valueOf) return a.valueOf() === b.valueOf();
-    if (a.toString !== Object.prototype.toString) return a.toString() === b.toString();
-
-    keys = Object.keys(a);
-    length = keys.length;
-    if (length !== Object.keys(b).length) return false;
-
-    for (i = length; i-- !== 0;)
-      if (!Object.prototype.hasOwnProperty.call(b, keys[i])) return false;
-
-    for (i = length; i-- !== 0;) {
-      var key = keys[i];
-
-      if (!equal(a[key], b[key])) return false;
-    }
-
-    return true;
-  }
-
-  // true if both NaN, false otherwise
-  return a!==a && b!==b;
-};
-
-
-/***/ }),
-
-/***/ 2965:
+/***/ 8971:
 /***/ ((module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.MissingRefError = exports.ValidationError = exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = exports.Ajv = void 0;
-const core_1 = __nccwpck_require__(9611);
-const draft7_1 = __nccwpck_require__(4123);
-const discriminator_1 = __nccwpck_require__(8084);
-const draft7MetaSchema = __nccwpck_require__(4981);
+const core_1 = __nccwpck_require__(673);
+const draft7_1 = __nccwpck_require__(2873);
+const discriminator_1 = __nccwpck_require__(6042);
+const draft7MetaSchema = __nccwpck_require__(133);
 const META_SUPPORT_DATA = ["/properties"];
 const META_SCHEMA_ID = "http://json-schema.org/draft-07/schema";
 class Ajv extends core_1.default {
@@ -3569,24 +3235,24 @@ module.exports = exports = Ajv;
 module.exports.Ajv = Ajv;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports["default"] = Ajv;
-var validate_1 = __nccwpck_require__(6387);
+var validate_1 = __nccwpck_require__(725);
 Object.defineProperty(exports, "KeywordCxt", ({ enumerable: true, get: function () { return validate_1.KeywordCxt; } }));
-var codegen_1 = __nccwpck_require__(3214);
+var codegen_1 = __nccwpck_require__(9224);
 Object.defineProperty(exports, "_", ({ enumerable: true, get: function () { return codegen_1._; } }));
 Object.defineProperty(exports, "str", ({ enumerable: true, get: function () { return codegen_1.str; } }));
 Object.defineProperty(exports, "stringify", ({ enumerable: true, get: function () { return codegen_1.stringify; } }));
 Object.defineProperty(exports, "nil", ({ enumerable: true, get: function () { return codegen_1.nil; } }));
 Object.defineProperty(exports, "Name", ({ enumerable: true, get: function () { return codegen_1.Name; } }));
 Object.defineProperty(exports, "CodeGen", ({ enumerable: true, get: function () { return codegen_1.CodeGen; } }));
-var validation_error_1 = __nccwpck_require__(6707);
+var validation_error_1 = __nccwpck_require__(5041);
 Object.defineProperty(exports, "ValidationError", ({ enumerable: true, get: function () { return validation_error_1.default; } }));
-var ref_error_1 = __nccwpck_require__(5568);
+var ref_error_1 = __nccwpck_require__(1902);
 Object.defineProperty(exports, "MissingRefError", ({ enumerable: true, get: function () { return ref_error_1.default; } }));
 //# sourceMappingURL=ajv.js.map
 
 /***/ }),
 
-/***/ 1657:
+/***/ 9771:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -3749,16 +3415,16 @@ exports.regexpCode = regexpCode;
 
 /***/ }),
 
-/***/ 3214:
+/***/ 9224:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.or = exports.and = exports.not = exports.CodeGen = exports.operators = exports.varKinds = exports.ValueScopeName = exports.ValueScope = exports.Scope = exports.Name = exports.regexpCode = exports.stringify = exports.getProperty = exports.nil = exports.strConcat = exports.str = exports._ = void 0;
-const code_1 = __nccwpck_require__(1657);
-const scope_1 = __nccwpck_require__(2174);
-var code_2 = __nccwpck_require__(1657);
+const code_1 = __nccwpck_require__(9771);
+const scope_1 = __nccwpck_require__(4128);
+var code_2 = __nccwpck_require__(9771);
 Object.defineProperty(exports, "_", ({ enumerable: true, get: function () { return code_2._; } }));
 Object.defineProperty(exports, "str", ({ enumerable: true, get: function () { return code_2.str; } }));
 Object.defineProperty(exports, "strConcat", ({ enumerable: true, get: function () { return code_2.strConcat; } }));
@@ -3767,7 +3433,7 @@ Object.defineProperty(exports, "getProperty", ({ enumerable: true, get: function
 Object.defineProperty(exports, "stringify", ({ enumerable: true, get: function () { return code_2.stringify; } }));
 Object.defineProperty(exports, "regexpCode", ({ enumerable: true, get: function () { return code_2.regexpCode; } }));
 Object.defineProperty(exports, "Name", ({ enumerable: true, get: function () { return code_2.Name; } }));
-var scope_2 = __nccwpck_require__(2174);
+var scope_2 = __nccwpck_require__(4128);
 Object.defineProperty(exports, "Scope", ({ enumerable: true, get: function () { return scope_2.Scope; } }));
 Object.defineProperty(exports, "ValueScope", ({ enumerable: true, get: function () { return scope_2.ValueScope; } }));
 Object.defineProperty(exports, "ValueScopeName", ({ enumerable: true, get: function () { return scope_2.ValueScopeName; } }));
@@ -4453,14 +4119,14 @@ function par(x) {
 
 /***/ }),
 
-/***/ 2174:
+/***/ 4128:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ValueScope = exports.ValueScopeName = exports.Scope = exports.varKinds = exports.UsedValueState = void 0;
-const code_1 = __nccwpck_require__(1657);
+const code_1 = __nccwpck_require__(9771);
 class ValueError extends Error {
     constructor(name) {
         super(`CodeGen: "code" for ${name} not defined`);
@@ -4603,16 +4269,16 @@ exports.ValueScope = ValueScope;
 
 /***/ }),
 
-/***/ 6045:
+/***/ 5687:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.extendErrors = exports.resetErrorsCount = exports.reportExtraError = exports.reportError = exports.keyword$DataError = exports.keywordError = void 0;
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
-const names_1 = __nccwpck_require__(9224);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
+const names_1 = __nccwpck_require__(7082);
 exports.keywordError = {
     message: ({ keyword }) => (0, codegen_1.str) `must pass "${keyword}" keyword validation`,
 };
@@ -4733,19 +4399,19 @@ function extraErrorProps(cxt, { params, message }, keyValues) {
 
 /***/ }),
 
-/***/ 5980:
+/***/ 7090:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.resolveSchema = exports.getCompilingSchema = exports.resolveRef = exports.compileSchema = exports.SchemaEnv = void 0;
-const codegen_1 = __nccwpck_require__(3214);
-const validation_error_1 = __nccwpck_require__(6707);
-const names_1 = __nccwpck_require__(9224);
-const resolve_1 = __nccwpck_require__(8756);
-const util_1 = __nccwpck_require__(270);
-const validate_1 = __nccwpck_require__(6387);
+const codegen_1 = __nccwpck_require__(9224);
+const validation_error_1 = __nccwpck_require__(5041);
+const names_1 = __nccwpck_require__(7082);
+const resolve_1 = __nccwpck_require__(2574);
+const util_1 = __nccwpck_require__(1852);
+const validate_1 = __nccwpck_require__(725);
 class SchemaEnv {
     constructor(env) {
         var _a;
@@ -4982,13 +4648,13 @@ function getJsonPointer(parsedRef, { baseId, schema, root }) {
 
 /***/ }),
 
-/***/ 9224:
+/***/ 7082:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
+const codegen_1 = __nccwpck_require__(9224);
 const names = {
     // validation function arguments
     data: new codegen_1.Name("data"), // data passed to validation function
@@ -5017,13 +4683,13 @@ exports["default"] = names;
 
 /***/ }),
 
-/***/ 5568:
+/***/ 1902:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const resolve_1 = __nccwpck_require__(8756);
+const resolve_1 = __nccwpck_require__(2574);
 class MissingRefError extends Error {
     constructor(resolver, baseId, ref, msg) {
         super(msg || `can't resolve reference ${ref} from id ${baseId}`);
@@ -5036,16 +4702,16 @@ exports["default"] = MissingRefError;
 
 /***/ }),
 
-/***/ 8756:
+/***/ 2574:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getSchemaRefs = exports.resolveUrl = exports.normalizeId = exports._getFullPath = exports.getFullPath = exports.inlineRef = void 0;
-const util_1 = __nccwpck_require__(270);
+const util_1 = __nccwpck_require__(1852);
 const equal = __nccwpck_require__(3430);
-const traverse = __nccwpck_require__(449);
+const traverse = __nccwpck_require__(1167);
 // TODO refactor to use keyword definitions
 const SIMPLE_INLINED = new Set([
     "type",
@@ -5198,7 +4864,7 @@ exports.getSchemaRefs = getSchemaRefs;
 
 /***/ }),
 
-/***/ 395:
+/***/ 269:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -5231,15 +4897,15 @@ exports.getRules = getRules;
 
 /***/ }),
 
-/***/ 270:
+/***/ 1852:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.checkStrictMode = exports.getErrorPath = exports.Type = exports.useFunc = exports.setEvaluated = exports.evaluatedPropsToName = exports.mergeEvaluated = exports.eachItem = exports.unescapeJsonPointer = exports.escapeJsonPointer = exports.escapeFragment = exports.unescapeFragment = exports.schemaRefOrVal = exports.schemaHasRulesButRef = exports.schemaHasRules = exports.checkUnknownRules = exports.alwaysValidSchema = exports.toHash = void 0;
-const codegen_1 = __nccwpck_require__(3214);
-const code_1 = __nccwpck_require__(1657);
+const codegen_1 = __nccwpck_require__(9224);
+const code_1 = __nccwpck_require__(9771);
 // TODO refactor to use Set
 function toHash(arr) {
     const hash = {};
@@ -5416,7 +5082,7 @@ exports.checkStrictMode = checkStrictMode;
 
 /***/ }),
 
-/***/ 2186:
+/***/ 8824:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -5442,16 +5108,16 @@ exports.shouldUseRule = shouldUseRule;
 
 /***/ }),
 
-/***/ 8984:
+/***/ 3542:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.boolOrEmptySchema = exports.topBoolOrEmptySchema = void 0;
-const errors_1 = __nccwpck_require__(6045);
-const codegen_1 = __nccwpck_require__(3214);
-const names_1 = __nccwpck_require__(9224);
+const errors_1 = __nccwpck_require__(5687);
+const codegen_1 = __nccwpck_require__(9224);
+const names_1 = __nccwpck_require__(7082);
 const boolError = {
     message: "boolean schema is false",
 };
@@ -5499,18 +5165,18 @@ function falseSchemaError(it, overrideAllErrors) {
 
 /***/ }),
 
-/***/ 703:
+/***/ 9721:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.reportTypeError = exports.checkDataTypes = exports.checkDataType = exports.coerceAndCheckDataType = exports.getJSONTypes = exports.getSchemaTypes = exports.DataType = void 0;
-const rules_1 = __nccwpck_require__(395);
-const applicability_1 = __nccwpck_require__(2186);
-const errors_1 = __nccwpck_require__(6045);
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
+const rules_1 = __nccwpck_require__(269);
+const applicability_1 = __nccwpck_require__(8824);
+const errors_1 = __nccwpck_require__(5687);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
 var DataType;
 (function (DataType) {
     DataType[DataType["Correct"] = 0] = "Correct";
@@ -5709,15 +5375,15 @@ function getTypeErrorContext(it) {
 
 /***/ }),
 
-/***/ 5069:
+/***/ 7471:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.assignDefaults = void 0;
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
 function assignDefaults(it, ty) {
     const { properties, items } = it.schema;
     if (ty === "object" && properties) {
@@ -5751,25 +5417,25 @@ function assignDefault(it, prop, defaultValue) {
 
 /***/ }),
 
-/***/ 6387:
+/***/ 725:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getData = exports.KeywordCxt = exports.validateFunctionCode = void 0;
-const boolSchema_1 = __nccwpck_require__(8984);
-const dataType_1 = __nccwpck_require__(703);
-const applicability_1 = __nccwpck_require__(2186);
-const dataType_2 = __nccwpck_require__(703);
-const defaults_1 = __nccwpck_require__(5069);
-const keyword_1 = __nccwpck_require__(3568);
-const subschema_1 = __nccwpck_require__(3902);
-const codegen_1 = __nccwpck_require__(3214);
-const names_1 = __nccwpck_require__(9224);
-const resolve_1 = __nccwpck_require__(8756);
-const util_1 = __nccwpck_require__(270);
-const errors_1 = __nccwpck_require__(6045);
+const boolSchema_1 = __nccwpck_require__(3542);
+const dataType_1 = __nccwpck_require__(9721);
+const applicability_1 = __nccwpck_require__(8824);
+const dataType_2 = __nccwpck_require__(9721);
+const defaults_1 = __nccwpck_require__(7471);
+const keyword_1 = __nccwpck_require__(9270);
+const subschema_1 = __nccwpck_require__(2740);
+const codegen_1 = __nccwpck_require__(9224);
+const names_1 = __nccwpck_require__(7082);
+const resolve_1 = __nccwpck_require__(2574);
+const util_1 = __nccwpck_require__(1852);
+const errors_1 = __nccwpck_require__(5687);
 // schema compilation - generates validation function, subschemaCode (below) is used for subschemas
 function validateFunctionCode(it) {
     if (isSchemaObj(it)) {
@@ -6278,17 +5944,17 @@ exports.getData = getData;
 
 /***/ }),
 
-/***/ 3568:
+/***/ 9270:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.validateKeywordUsage = exports.validSchemaType = exports.funcKeywordCode = exports.macroKeywordCode = void 0;
-const codegen_1 = __nccwpck_require__(3214);
-const names_1 = __nccwpck_require__(9224);
-const code_1 = __nccwpck_require__(8566);
-const errors_1 = __nccwpck_require__(6045);
+const codegen_1 = __nccwpck_require__(9224);
+const names_1 = __nccwpck_require__(7082);
+const code_1 = __nccwpck_require__(2144);
+const errors_1 = __nccwpck_require__(5687);
 function macroKeywordCode(cxt, def) {
     const { gen, keyword, schema, parentSchema, it } = cxt;
     const macroSchema = def.macro.call(it.self, schema, parentSchema, it);
@@ -6409,15 +6075,15 @@ exports.validateKeywordUsage = validateKeywordUsage;
 
 /***/ }),
 
-/***/ 3902:
+/***/ 2740:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.extendSubschemaMode = exports.extendSubschemaData = exports.getSubschema = void 0;
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
 function getSubschema(it, { keyword, schemaProp, schema, schemaPath, errSchemaPath, topSchemaRef }) {
     if (keyword !== undefined && schema !== undefined) {
         throw new Error('both "keyword" and "schema" passed, only one allowed');
@@ -6497,32 +6163,32 @@ exports.extendSubschemaMode = extendSubschemaMode;
 
 /***/ }),
 
-/***/ 9611:
+/***/ 673:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.CodeGen = exports.Name = exports.nil = exports.stringify = exports.str = exports._ = exports.KeywordCxt = void 0;
-var validate_1 = __nccwpck_require__(6387);
+var validate_1 = __nccwpck_require__(725);
 Object.defineProperty(exports, "KeywordCxt", ({ enumerable: true, get: function () { return validate_1.KeywordCxt; } }));
-var codegen_1 = __nccwpck_require__(3214);
+var codegen_1 = __nccwpck_require__(9224);
 Object.defineProperty(exports, "_", ({ enumerable: true, get: function () { return codegen_1._; } }));
 Object.defineProperty(exports, "str", ({ enumerable: true, get: function () { return codegen_1.str; } }));
 Object.defineProperty(exports, "stringify", ({ enumerable: true, get: function () { return codegen_1.stringify; } }));
 Object.defineProperty(exports, "nil", ({ enumerable: true, get: function () { return codegen_1.nil; } }));
 Object.defineProperty(exports, "Name", ({ enumerable: true, get: function () { return codegen_1.Name; } }));
 Object.defineProperty(exports, "CodeGen", ({ enumerable: true, get: function () { return codegen_1.CodeGen; } }));
-const validation_error_1 = __nccwpck_require__(6707);
-const ref_error_1 = __nccwpck_require__(5568);
-const rules_1 = __nccwpck_require__(395);
-const compile_1 = __nccwpck_require__(5980);
-const codegen_2 = __nccwpck_require__(3214);
-const resolve_1 = __nccwpck_require__(8756);
-const dataType_1 = __nccwpck_require__(703);
-const util_1 = __nccwpck_require__(270);
-const $dataRefSchema = __nccwpck_require__(3047);
-const uri_1 = __nccwpck_require__(8547);
+const validation_error_1 = __nccwpck_require__(5041);
+const ref_error_1 = __nccwpck_require__(1902);
+const rules_1 = __nccwpck_require__(269);
+const compile_1 = __nccwpck_require__(7090);
+const codegen_2 = __nccwpck_require__(9224);
+const resolve_1 = __nccwpck_require__(2574);
+const dataType_1 = __nccwpck_require__(9721);
+const util_1 = __nccwpck_require__(1852);
+const $dataRefSchema = __nccwpck_require__(7399);
+const uri_1 = __nccwpck_require__(5113);
 const defaultRegExp = (str, flags) => new RegExp(str, flags);
 defaultRegExp.code = "new RegExp";
 const META_IGNORE_OPTIONS = ["removeAdditional", "useDefaults", "coerceTypes"];
@@ -7122,7 +6788,7 @@ function schemaOrData(schema) {
 
 /***/ }),
 
-/***/ 4489:
+/***/ 6227:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -7136,7 +6802,7 @@ exports["default"] = equal;
 
 /***/ }),
 
-/***/ 2952:
+/***/ 9042:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -7167,7 +6833,7 @@ ucs2length.code = 'require("ajv/dist/runtime/ucs2length").default';
 
 /***/ }),
 
-/***/ 8547:
+/***/ 5113:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -7180,7 +6846,7 @@ exports["default"] = uri;
 
 /***/ }),
 
-/***/ 6707:
+/***/ 5041:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -7198,15 +6864,15 @@ exports["default"] = ValidationError;
 
 /***/ }),
 
-/***/ 9126:
+/***/ 6292:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.validateAdditionalItems = void 0;
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
 const error = {
     message: ({ params: { len } }) => (0, codegen_1.str) `must NOT have more than ${len} items`,
     params: ({ params: { len } }) => (0, codegen_1._) `{limit: ${len}}`,
@@ -7254,16 +6920,16 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 5021:
+/***/ 9547:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const code_1 = __nccwpck_require__(8566);
-const codegen_1 = __nccwpck_require__(3214);
-const names_1 = __nccwpck_require__(9224);
-const util_1 = __nccwpck_require__(270);
+const code_1 = __nccwpck_require__(2144);
+const codegen_1 = __nccwpck_require__(9224);
+const names_1 = __nccwpck_require__(7082);
+const util_1 = __nccwpck_require__(1852);
 const error = {
     message: "must NOT have additional properties",
     params: ({ params }) => (0, codegen_1._) `{additionalProperty: ${params.additionalProperty}}`,
@@ -7367,13 +7033,13 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 7463:
+/***/ 7849:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const util_1 = __nccwpck_require__(270);
+const util_1 = __nccwpck_require__(1852);
 const def = {
     keyword: "allOf",
     schemaType: "array",
@@ -7397,13 +7063,13 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 5722:
+/***/ 4032:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const code_1 = __nccwpck_require__(8566);
+const code_1 = __nccwpck_require__(2144);
 const def = {
     keyword: "anyOf",
     schemaType: "array",
@@ -7416,14 +7082,14 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 8304:
+/***/ 2466:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
 const error = {
     message: ({ params: { min, max } }) => max === undefined
         ? (0, codegen_1.str) `must contain at least ${min} valid item(s)`
@@ -7518,16 +7184,16 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 5472:
+/***/ 878:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.validateSchemaDeps = exports.validatePropertyDeps = exports.error = void 0;
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
-const code_1 = __nccwpck_require__(8566);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
+const code_1 = __nccwpck_require__(2144);
 exports.error = {
     message: ({ params: { property, depsCount, deps } }) => {
         const property_ies = depsCount === 1 ? "property" : "properties";
@@ -7610,14 +7276,14 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 1498:
+/***/ 8252:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
 const error = {
     message: ({ params }) => (0, codegen_1.str) `must match "${params.ifClause}" schema`,
     params: ({ params }) => (0, codegen_1._) `{failingKeyword: ${params.ifClause}}`,
@@ -7683,28 +7349,28 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 9173:
+/***/ 7427:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const additionalItems_1 = __nccwpck_require__(9126);
-const prefixItems_1 = __nccwpck_require__(3449);
-const items_1 = __nccwpck_require__(109);
-const items2020_1 = __nccwpck_require__(6285);
-const contains_1 = __nccwpck_require__(8304);
-const dependencies_1 = __nccwpck_require__(5472);
-const propertyNames_1 = __nccwpck_require__(970);
-const additionalProperties_1 = __nccwpck_require__(5021);
-const properties_1 = __nccwpck_require__(5344);
-const patternProperties_1 = __nccwpck_require__(3650);
-const not_1 = __nccwpck_require__(5056);
-const anyOf_1 = __nccwpck_require__(5722);
-const oneOf_1 = __nccwpck_require__(9108);
-const allOf_1 = __nccwpck_require__(7463);
-const if_1 = __nccwpck_require__(1498);
-const thenElse_1 = __nccwpck_require__(2427);
+const additionalItems_1 = __nccwpck_require__(6292);
+const prefixItems_1 = __nccwpck_require__(5359);
+const items_1 = __nccwpck_require__(1611);
+const items2020_1 = __nccwpck_require__(5259);
+const contains_1 = __nccwpck_require__(2466);
+const dependencies_1 = __nccwpck_require__(878);
+const propertyNames_1 = __nccwpck_require__(6336);
+const additionalProperties_1 = __nccwpck_require__(9547);
+const properties_1 = __nccwpck_require__(8214);
+const patternProperties_1 = __nccwpck_require__(3196);
+const not_1 = __nccwpck_require__(4778);
+const anyOf_1 = __nccwpck_require__(4032);
+const oneOf_1 = __nccwpck_require__(7862);
+const allOf_1 = __nccwpck_require__(7849);
+const if_1 = __nccwpck_require__(8252);
+const thenElse_1 = __nccwpck_require__(937);
 function getApplicator(draft2020 = false) {
     const applicator = [
         // any
@@ -7734,16 +7400,16 @@ exports["default"] = getApplicator;
 
 /***/ }),
 
-/***/ 109:
+/***/ 1611:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.validateTuple = void 0;
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
-const code_1 = __nccwpck_require__(8566);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
+const code_1 = __nccwpck_require__(2144);
 const def = {
     keyword: "items",
     type: "array",
@@ -7793,16 +7459,16 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 6285:
+/***/ 5259:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
-const code_1 = __nccwpck_require__(8566);
-const additionalItems_1 = __nccwpck_require__(9126);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
+const code_1 = __nccwpck_require__(2144);
+const additionalItems_1 = __nccwpck_require__(6292);
 const error = {
     message: ({ params: { len } }) => (0, codegen_1.str) `must NOT have more than ${len} items`,
     params: ({ params: { len } }) => (0, codegen_1._) `{limit: ${len}}`,
@@ -7830,13 +7496,13 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 5056:
+/***/ 4778:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const util_1 = __nccwpck_require__(270);
+const util_1 = __nccwpck_require__(1852);
 const def = {
     keyword: "not",
     schemaType: ["object", "boolean"],
@@ -7863,14 +7529,14 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 9108:
+/***/ 7862:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
 const error = {
     message: "must match exactly one schema in oneOf",
     params: ({ params }) => (0, codegen_1._) `{passingSchemas: ${params.passing}}`,
@@ -7930,16 +7596,16 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 3650:
+/***/ 3196:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const code_1 = __nccwpck_require__(8566);
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
-const util_2 = __nccwpck_require__(270);
+const code_1 = __nccwpck_require__(2144);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
+const util_2 = __nccwpck_require__(1852);
 const def = {
     keyword: "patternProperties",
     type: "object",
@@ -8012,13 +7678,13 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 3449:
+/***/ 5359:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const items_1 = __nccwpck_require__(109);
+const items_1 = __nccwpck_require__(1611);
 const def = {
     keyword: "prefixItems",
     type: "array",
@@ -8031,16 +7697,16 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 5344:
+/***/ 8214:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const validate_1 = __nccwpck_require__(6387);
-const code_1 = __nccwpck_require__(8566);
-const util_1 = __nccwpck_require__(270);
-const additionalProperties_1 = __nccwpck_require__(5021);
+const validate_1 = __nccwpck_require__(725);
+const code_1 = __nccwpck_require__(2144);
+const util_1 = __nccwpck_require__(1852);
+const additionalProperties_1 = __nccwpck_require__(9547);
 const def = {
     keyword: "properties",
     type: "object",
@@ -8092,14 +7758,14 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 970:
+/***/ 6336:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
 const error = {
     message: "property name must be valid",
     params: ({ params }) => (0, codegen_1._) `{propertyName: ${params.propertyName}}`,
@@ -8137,13 +7803,13 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 2427:
+/***/ 937:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const util_1 = __nccwpck_require__(270);
+const util_1 = __nccwpck_require__(1852);
 const def = {
     keyword: ["then", "else"],
     schemaType: ["object", "boolean"],
@@ -8157,17 +7823,17 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 8566:
+/***/ 2144:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.validateUnion = exports.validateArray = exports.usePattern = exports.callValidateCode = exports.schemaProperties = exports.allSchemaProperties = exports.noPropertyInData = exports.propertyInData = exports.isOwnProperty = exports.hasPropFunc = exports.reportMissingProp = exports.checkMissingProp = exports.checkReportMissingProp = void 0;
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
-const names_1 = __nccwpck_require__(9224);
-const util_2 = __nccwpck_require__(270);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
+const names_1 = __nccwpck_require__(7082);
+const util_2 = __nccwpck_require__(1852);
 function checkReportMissingProp(cxt, prop) {
     const { gen, data, it } = cxt;
     gen.if(noPropertyInData(gen, data, prop, it.opts.ownProperties), () => {
@@ -8295,7 +7961,7 @@ exports.validateUnion = validateUnion;
 
 /***/ }),
 
-/***/ 3406:
+/***/ 6988:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -8312,14 +7978,14 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 315:
+/***/ 6313:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const id_1 = __nccwpck_require__(3406);
-const ref_1 = __nccwpck_require__(9118);
+const id_1 = __nccwpck_require__(6988);
+const ref_1 = __nccwpck_require__(8048);
 const core = [
     "$schema",
     "$id",
@@ -8335,19 +8001,19 @@ exports["default"] = core;
 
 /***/ }),
 
-/***/ 9118:
+/***/ 8048:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.callRef = exports.getValidate = void 0;
-const ref_error_1 = __nccwpck_require__(5568);
-const code_1 = __nccwpck_require__(8566);
-const codegen_1 = __nccwpck_require__(3214);
-const names_1 = __nccwpck_require__(9224);
-const compile_1 = __nccwpck_require__(5980);
-const util_1 = __nccwpck_require__(270);
+const ref_error_1 = __nccwpck_require__(1902);
+const code_1 = __nccwpck_require__(2144);
+const codegen_1 = __nccwpck_require__(9224);
+const names_1 = __nccwpck_require__(7082);
+const compile_1 = __nccwpck_require__(7090);
+const util_1 = __nccwpck_require__(1852);
 const def = {
     keyword: "$ref",
     schemaType: "string",
@@ -8464,17 +8130,17 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 8084:
+/***/ 6042:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
-const types_1 = __nccwpck_require__(3713);
-const compile_1 = __nccwpck_require__(5980);
-const ref_error_1 = __nccwpck_require__(5568);
-const util_1 = __nccwpck_require__(270);
+const codegen_1 = __nccwpck_require__(9224);
+const types_1 = __nccwpck_require__(7831);
+const compile_1 = __nccwpck_require__(7090);
+const ref_error_1 = __nccwpck_require__(1902);
+const util_1 = __nccwpck_require__(1852);
 const error = {
     message: ({ params: { discrError, tagName } }) => discrError === types_1.DiscrError.Tag
         ? `tag "${tagName}" must be string`
@@ -8575,7 +8241,7 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 3713:
+/***/ 7831:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -8591,17 +8257,17 @@ var DiscrError;
 
 /***/ }),
 
-/***/ 4123:
+/***/ 2873:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const core_1 = __nccwpck_require__(315);
-const validation_1 = __nccwpck_require__(9495);
-const applicator_1 = __nccwpck_require__(9173);
-const format_1 = __nccwpck_require__(8727);
-const metadata_1 = __nccwpck_require__(7142);
+const core_1 = __nccwpck_require__(6313);
+const validation_1 = __nccwpck_require__(5773);
+const applicator_1 = __nccwpck_require__(7427);
+const format_1 = __nccwpck_require__(2813);
+const metadata_1 = __nccwpck_require__(5752);
 const draft7Vocabularies = [
     core_1.default,
     validation_1.default,
@@ -8615,13 +8281,13 @@ exports["default"] = draft7Vocabularies;
 
 /***/ }),
 
-/***/ 5900:
+/***/ 4086:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
+const codegen_1 = __nccwpck_require__(9224);
 const error = {
     message: ({ schemaCode }) => (0, codegen_1.str) `must match format "${schemaCode}"`,
     params: ({ schemaCode }) => (0, codegen_1._) `{format: ${schemaCode}}`,
@@ -8714,20 +8380,20 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 8727:
+/***/ 2813:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const format_1 = __nccwpck_require__(5900);
+const format_1 = __nccwpck_require__(4086);
 const format = [format_1.default];
 exports["default"] = format;
 //# sourceMappingURL=index.js.map
 
 /***/ }),
 
-/***/ 7142:
+/***/ 5752:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -8752,15 +8418,15 @@ exports.contentVocabulary = [
 
 /***/ }),
 
-/***/ 5228:
+/***/ 4945:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
-const equal_1 = __nccwpck_require__(4489);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
+const equal_1 = __nccwpck_require__(6227);
 const error = {
     message: "must be equal to constant",
     params: ({ schemaCode }) => (0, codegen_1._) `{allowedValue: ${schemaCode}}`,
@@ -8784,15 +8450,15 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 738:
+/***/ 7460:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
-const equal_1 = __nccwpck_require__(4489);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
+const equal_1 = __nccwpck_require__(6227);
 const error = {
     message: "must be equal to one of the allowed values",
     params: ({ schemaCode }) => (0, codegen_1._) `{allowedValues: ${schemaCode}}`,
@@ -8839,22 +8505,22 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 9495:
+/***/ 5773:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const limitNumber_1 = __nccwpck_require__(2713);
-const multipleOf_1 = __nccwpck_require__(8026);
-const limitLength_1 = __nccwpck_require__(5972);
-const pattern_1 = __nccwpck_require__(8305);
-const limitProperties_1 = __nccwpck_require__(5105);
-const required_1 = __nccwpck_require__(2230);
-const limitItems_1 = __nccwpck_require__(122);
-const uniqueItems_1 = __nccwpck_require__(3286);
-const const_1 = __nccwpck_require__(5228);
-const enum_1 = __nccwpck_require__(738);
+const limitNumber_1 = __nccwpck_require__(3919);
+const multipleOf_1 = __nccwpck_require__(7512);
+const limitLength_1 = __nccwpck_require__(9198);
+const pattern_1 = __nccwpck_require__(6867);
+const limitProperties_1 = __nccwpck_require__(723);
+const required_1 = __nccwpck_require__(2524);
+const limitItems_1 = __nccwpck_require__(4588);
+const uniqueItems_1 = __nccwpck_require__(432);
+const const_1 = __nccwpck_require__(4945);
+const enum_1 = __nccwpck_require__(7460);
 const validation = [
     // number
     limitNumber_1.default,
@@ -8879,13 +8545,13 @@ exports["default"] = validation;
 
 /***/ }),
 
-/***/ 122:
+/***/ 4588:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
+const codegen_1 = __nccwpck_require__(9224);
 const error = {
     message({ keyword, schemaCode }) {
         const comp = keyword === "maxItems" ? "more" : "fewer";
@@ -8910,15 +8576,15 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 5972:
+/***/ 9198:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
-const ucs2length_1 = __nccwpck_require__(2952);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
+const ucs2length_1 = __nccwpck_require__(9042);
 const error = {
     message({ keyword, schemaCode }) {
         const comp = keyword === "maxLength" ? "more" : "fewer";
@@ -8944,13 +8610,13 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 2713:
+/***/ 3919:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
+const codegen_1 = __nccwpck_require__(9224);
 const ops = codegen_1.operators;
 const KWDs = {
     maximum: { okStr: "<=", ok: ops.LTE, fail: ops.GT },
@@ -8978,13 +8644,13 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 5105:
+/***/ 723:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
+const codegen_1 = __nccwpck_require__(9224);
 const error = {
     message({ keyword, schemaCode }) {
         const comp = keyword === "maxProperties" ? "more" : "fewer";
@@ -9009,13 +8675,13 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 8026:
+/***/ 7512:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const codegen_1 = __nccwpck_require__(3214);
+const codegen_1 = __nccwpck_require__(9224);
 const error = {
     message: ({ schemaCode }) => (0, codegen_1.str) `must be multiple of ${schemaCode}`,
     params: ({ schemaCode }) => (0, codegen_1._) `{multipleOf: ${schemaCode}}`,
@@ -9042,14 +8708,14 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 8305:
+/***/ 6867:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const code_1 = __nccwpck_require__(8566);
-const codegen_1 = __nccwpck_require__(3214);
+const code_1 = __nccwpck_require__(2144);
+const codegen_1 = __nccwpck_require__(9224);
 const error = {
     message: ({ schemaCode }) => (0, codegen_1.str) `must match pattern "${schemaCode}"`,
     params: ({ schemaCode }) => (0, codegen_1._) `{pattern: ${schemaCode}}`,
@@ -9073,15 +8739,15 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 2230:
+/***/ 2524:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const code_1 = __nccwpck_require__(8566);
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
+const code_1 = __nccwpck_require__(2144);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
 const error = {
     message: ({ params: { missingProperty } }) => (0, codegen_1.str) `must have required property '${missingProperty}'`,
     params: ({ params: { missingProperty } }) => (0, codegen_1._) `{missingProperty: ${missingProperty}}`,
@@ -9159,16 +8825,16 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 3286:
+/***/ 432:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const dataType_1 = __nccwpck_require__(703);
-const codegen_1 = __nccwpck_require__(3214);
-const util_1 = __nccwpck_require__(270);
-const equal_1 = __nccwpck_require__(4489);
+const dataType_1 = __nccwpck_require__(9721);
+const codegen_1 = __nccwpck_require__(9224);
+const util_1 = __nccwpck_require__(1852);
+const equal_1 = __nccwpck_require__(6227);
 const error = {
     message: ({ params: { i, j } }) => (0, codegen_1.str) `must NOT have duplicate items (items ## ${j} and ${i} are identical)`,
     params: ({ params: { i, j } }) => (0, codegen_1._) `{i: ${i}, j: ${j}}`,
@@ -9230,7 +8896,423 @@ exports["default"] = def;
 
 /***/ }),
 
-/***/ 449:
+/***/ 2324:
+/***/ ((module) => {
+
+let p = process || {}, argv = p.argv || [], env = p.env || {}
+let isColorSupported =
+	!(!!env.NO_COLOR || argv.includes("--no-color")) &&
+	(!!env.FORCE_COLOR || argv.includes("--color") || p.platform === "win32" || ((p.stdout || {}).isTTY && env.TERM !== "dumb") || !!env.CI)
+
+let formatter = (open, close, replace = open) =>
+	input => {
+		let string = "" + input, index = string.indexOf(close, open.length)
+		return ~index ? open + replaceClose(string, close, replace, index) + close : open + string + close
+	}
+
+let replaceClose = (string, close, replace, index) => {
+	let result = "", cursor = 0
+	do {
+		result += string.substring(cursor, index) + replace
+		cursor = index + close.length
+		index = string.indexOf(close, cursor)
+	} while (~index)
+	return result + string.substring(cursor)
+}
+
+let createColors = (enabled = isColorSupported) => {
+	let f = enabled ? formatter : () => String
+	return {
+		isColorSupported: enabled,
+		reset: f("\x1b[0m", "\x1b[0m"),
+		bold: f("\x1b[1m", "\x1b[22m", "\x1b[22m\x1b[1m"),
+		dim: f("\x1b[2m", "\x1b[22m", "\x1b[22m\x1b[2m"),
+		italic: f("\x1b[3m", "\x1b[23m"),
+		underline: f("\x1b[4m", "\x1b[24m"),
+		inverse: f("\x1b[7m", "\x1b[27m"),
+		hidden: f("\x1b[8m", "\x1b[28m"),
+		strikethrough: f("\x1b[9m", "\x1b[29m"),
+
+		black: f("\x1b[30m", "\x1b[39m"),
+		red: f("\x1b[31m", "\x1b[39m"),
+		green: f("\x1b[32m", "\x1b[39m"),
+		yellow: f("\x1b[33m", "\x1b[39m"),
+		blue: f("\x1b[34m", "\x1b[39m"),
+		magenta: f("\x1b[35m", "\x1b[39m"),
+		cyan: f("\x1b[36m", "\x1b[39m"),
+		white: f("\x1b[37m", "\x1b[39m"),
+		gray: f("\x1b[90m", "\x1b[39m"),
+
+		bgBlack: f("\x1b[40m", "\x1b[49m"),
+		bgRed: f("\x1b[41m", "\x1b[49m"),
+		bgGreen: f("\x1b[42m", "\x1b[49m"),
+		bgYellow: f("\x1b[43m", "\x1b[49m"),
+		bgBlue: f("\x1b[44m", "\x1b[49m"),
+		bgMagenta: f("\x1b[45m", "\x1b[49m"),
+		bgCyan: f("\x1b[46m", "\x1b[49m"),
+		bgWhite: f("\x1b[47m", "\x1b[49m"),
+
+		blackBright: f("\x1b[90m", "\x1b[39m"),
+		redBright: f("\x1b[91m", "\x1b[39m"),
+		greenBright: f("\x1b[92m", "\x1b[39m"),
+		yellowBright: f("\x1b[93m", "\x1b[39m"),
+		blueBright: f("\x1b[94m", "\x1b[39m"),
+		magentaBright: f("\x1b[95m", "\x1b[39m"),
+		cyanBright: f("\x1b[96m", "\x1b[39m"),
+		whiteBright: f("\x1b[97m", "\x1b[39m"),
+
+		bgBlackBright: f("\x1b[100m", "\x1b[49m"),
+		bgRedBright: f("\x1b[101m", "\x1b[49m"),
+		bgGreenBright: f("\x1b[102m", "\x1b[49m"),
+		bgYellowBright: f("\x1b[103m", "\x1b[49m"),
+		bgBlueBright: f("\x1b[104m", "\x1b[49m"),
+		bgMagentaBright: f("\x1b[105m", "\x1b[49m"),
+		bgCyanBright: f("\x1b[106m", "\x1b[49m"),
+		bgWhiteBright: f("\x1b[107m", "\x1b[49m"),
+	}
+}
+
+module.exports = createColors()
+module.exports.createColors = createColors
+
+
+/***/ }),
+
+/***/ 9380:
+/***/ ((module) => {
+
+"use strict";
+
+module.exports = balanced;
+function balanced(a, b, str) {
+  if (a instanceof RegExp) a = maybeMatch(a, str);
+  if (b instanceof RegExp) b = maybeMatch(b, str);
+
+  var r = range(a, b, str);
+
+  return r && {
+    start: r[0],
+    end: r[1],
+    pre: str.slice(0, r[0]),
+    body: str.slice(r[0] + a.length, r[1]),
+    post: str.slice(r[1] + b.length)
+  };
+}
+
+function maybeMatch(reg, str) {
+  var m = str.match(reg);
+  return m ? m[0] : null;
+}
+
+balanced.range = range;
+function range(a, b, str) {
+  var begs, beg, left, right, result;
+  var ai = str.indexOf(a);
+  var bi = str.indexOf(b, ai + 1);
+  var i = ai;
+
+  if (ai >= 0 && bi > 0) {
+    if(a===b) {
+      return [ai, bi];
+    }
+    begs = [];
+    left = str.length;
+
+    while (i >= 0 && !result) {
+      if (i == ai) {
+        begs.push(i);
+        ai = str.indexOf(a, i + 1);
+      } else if (begs.length == 1) {
+        result = [ begs.pop(), bi ];
+      } else {
+        beg = begs.pop();
+        if (beg < left) {
+          left = beg;
+          right = bi;
+        }
+
+        bi = str.indexOf(b, i + 1);
+      }
+
+      i = ai < bi && ai >= 0 ? ai : bi;
+    }
+
+    if (begs.length) {
+      result = [ left, right ];
+    }
+  }
+
+  return result;
+}
+
+
+/***/ }),
+
+/***/ 4691:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var balanced = __nccwpck_require__(9380);
+
+module.exports = expandTop;
+
+var escSlash = '\0SLASH'+Math.random()+'\0';
+var escOpen = '\0OPEN'+Math.random()+'\0';
+var escClose = '\0CLOSE'+Math.random()+'\0';
+var escComma = '\0COMMA'+Math.random()+'\0';
+var escPeriod = '\0PERIOD'+Math.random()+'\0';
+
+function numeric(str) {
+  return parseInt(str, 10) == str
+    ? parseInt(str, 10)
+    : str.charCodeAt(0);
+}
+
+function escapeBraces(str) {
+  return str.split('\\\\').join(escSlash)
+            .split('\\{').join(escOpen)
+            .split('\\}').join(escClose)
+            .split('\\,').join(escComma)
+            .split('\\.').join(escPeriod);
+}
+
+function unescapeBraces(str) {
+  return str.split(escSlash).join('\\')
+            .split(escOpen).join('{')
+            .split(escClose).join('}')
+            .split(escComma).join(',')
+            .split(escPeriod).join('.');
+}
+
+
+// Basically just str.split(","), but handling cases
+// where we have nested braced sections, which should be
+// treated as individual members, like {a,{b,c},d}
+function parseCommaParts(str) {
+  if (!str)
+    return [''];
+
+  var parts = [];
+  var m = balanced('{', '}', str);
+
+  if (!m)
+    return str.split(',');
+
+  var pre = m.pre;
+  var body = m.body;
+  var post = m.post;
+  var p = pre.split(',');
+
+  p[p.length-1] += '{' + body + '}';
+  var postParts = parseCommaParts(post);
+  if (post.length) {
+    p[p.length-1] += postParts.shift();
+    p.push.apply(p, postParts);
+  }
+
+  parts.push.apply(parts, p);
+
+  return parts;
+}
+
+function expandTop(str) {
+  if (!str)
+    return [];
+
+  // I don't know why Bash 4.3 does this, but it does.
+  // Anything starting with {} will have the first two bytes preserved
+  // but *only* at the top level, so {},a}b will not expand to anything,
+  // but a{},b}c will be expanded to [a}c,abc].
+  // One could argue that this is a bug in Bash, but since the goal of
+  // this module is to match Bash's rules, we escape a leading {}
+  if (str.substr(0, 2) === '{}') {
+    str = '\\{\\}' + str.substr(2);
+  }
+
+  return expand(escapeBraces(str), true).map(unescapeBraces);
+}
+
+function embrace(str) {
+  return '{' + str + '}';
+}
+function isPadded(el) {
+  return /^-?0\d/.test(el);
+}
+
+function lte(i, y) {
+  return i <= y;
+}
+function gte(i, y) {
+  return i >= y;
+}
+
+function expand(str, isTop) {
+  var expansions = [];
+
+  var m = balanced('{', '}', str);
+  if (!m) return [str];
+
+  // no need to expand pre, since it is guaranteed to be free of brace-sets
+  var pre = m.pre;
+  var post = m.post.length
+    ? expand(m.post, false)
+    : [''];
+
+  if (/\$$/.test(m.pre)) {    
+    for (var k = 0; k < post.length; k++) {
+      var expansion = pre+ '{' + m.body + '}' + post[k];
+      expansions.push(expansion);
+    }
+  } else {
+    var isNumericSequence = /^-?\d+\.\.-?\d+(?:\.\.-?\d+)?$/.test(m.body);
+    var isAlphaSequence = /^[a-zA-Z]\.\.[a-zA-Z](?:\.\.-?\d+)?$/.test(m.body);
+    var isSequence = isNumericSequence || isAlphaSequence;
+    var isOptions = m.body.indexOf(',') >= 0;
+    if (!isSequence && !isOptions) {
+      // {a},b}
+      if (m.post.match(/,.*\}/)) {
+        str = m.pre + '{' + m.body + escClose + m.post;
+        return expand(str);
+      }
+      return [str];
+    }
+
+    var n;
+    if (isSequence) {
+      n = m.body.split(/\.\./);
+    } else {
+      n = parseCommaParts(m.body);
+      if (n.length === 1) {
+        // x{{a,b}}y ==> x{a}y x{b}y
+        n = expand(n[0], false).map(embrace);
+        if (n.length === 1) {
+          return post.map(function(p) {
+            return m.pre + n[0] + p;
+          });
+        }
+      }
+    }
+
+    // at this point, n is the parts, and we know it's not a comma set
+    // with a single entry.
+    var N;
+
+    if (isSequence) {
+      var x = numeric(n[0]);
+      var y = numeric(n[1]);
+      var width = Math.max(n[0].length, n[1].length)
+      var incr = n.length == 3
+        ? Math.abs(numeric(n[2]))
+        : 1;
+      var test = lte;
+      var reverse = y < x;
+      if (reverse) {
+        incr *= -1;
+        test = gte;
+      }
+      var pad = n.some(isPadded);
+
+      N = [];
+
+      for (var i = x; test(i, y); i += incr) {
+        var c;
+        if (isAlphaSequence) {
+          c = String.fromCharCode(i);
+          if (c === '\\')
+            c = '';
+        } else {
+          c = String(i);
+          if (pad) {
+            var need = width - c.length;
+            if (need > 0) {
+              var z = new Array(need + 1).join('0');
+              if (i < 0)
+                c = '-' + z + c.slice(1);
+              else
+                c = z + c;
+            }
+          }
+        }
+        N.push(c);
+      }
+    } else {
+      N = [];
+
+      for (var j = 0; j < n.length; j++) {
+        N.push.apply(N, expand(n[j], false));
+      }
+    }
+
+    for (var j = 0; j < N.length; j++) {
+      for (var k = 0; k < post.length; k++) {
+        var expansion = pre + N[j] + post[k];
+        if (!isTop || isSequence || expansion)
+          expansions.push(expansion);
+      }
+    }
+  }
+
+  return expansions;
+}
+
+
+
+/***/ }),
+
+/***/ 3430:
+/***/ ((module) => {
+
+"use strict";
+
+
+// do not edit .js files directly - edit src/index.jst
+
+
+
+module.exports = function equal(a, b) {
+  if (a === b) return true;
+
+  if (a && b && typeof a == 'object' && typeof b == 'object') {
+    if (a.constructor !== b.constructor) return false;
+
+    var length, i, keys;
+    if (Array.isArray(a)) {
+      length = a.length;
+      if (length != b.length) return false;
+      for (i = length; i-- !== 0;)
+        if (!equal(a[i], b[i])) return false;
+      return true;
+    }
+
+
+
+    if (a.constructor === RegExp) return a.source === b.source && a.flags === b.flags;
+    if (a.valueOf !== Object.prototype.valueOf) return a.valueOf() === b.valueOf();
+    if (a.toString !== Object.prototype.toString) return a.toString() === b.toString();
+
+    keys = Object.keys(a);
+    length = keys.length;
+    if (length !== Object.keys(b).length) return false;
+
+    for (i = length; i-- !== 0;)
+      if (!Object.prototype.hasOwnProperty.call(b, keys[i])) return false;
+
+    for (i = length; i-- !== 0;) {
+      var key = keys[i];
+
+      if (!equal(a[key], b[key])) return false;
+    }
+
+    return true;
+  }
+
+  // true if both NaN, false otherwise
+  return a!==a && b!==b;
+};
+
+
+/***/ }),
+
+/***/ 1167:
 /***/ ((module) => {
 
 "use strict";
@@ -9327,88 +9409,6 @@ function _traverse(opts, pre, post, schema, jsonPtr, rootSchema, parentJsonPtr, 
 function escapeJsonPtr(str) {
   return str.replace(/~/g, '~0').replace(/\//g, '~1');
 }
-
-
-/***/ }),
-
-/***/ 6642:
-/***/ ((module) => {
-
-let p = process || {}, argv = p.argv || [], env = p.env || {}
-let isColorSupported =
-	!(!!env.NO_COLOR || argv.includes("--no-color")) &&
-	(!!env.FORCE_COLOR || argv.includes("--color") || p.platform === "win32" || ((p.stdout || {}).isTTY && env.TERM !== "dumb") || !!env.CI)
-
-let formatter = (open, close, replace = open) =>
-	input => {
-		let string = "" + input, index = string.indexOf(close, open.length)
-		return ~index ? open + replaceClose(string, close, replace, index) + close : open + string + close
-	}
-
-let replaceClose = (string, close, replace, index) => {
-	let result = "", cursor = 0
-	do {
-		result += string.substring(cursor, index) + replace
-		cursor = index + close.length
-		index = string.indexOf(close, cursor)
-	} while (~index)
-	return result + string.substring(cursor)
-}
-
-let createColors = (enabled = isColorSupported) => {
-	let f = enabled ? formatter : () => String
-	return {
-		isColorSupported: enabled,
-		reset: f("\x1b[0m", "\x1b[0m"),
-		bold: f("\x1b[1m", "\x1b[22m", "\x1b[22m\x1b[1m"),
-		dim: f("\x1b[2m", "\x1b[22m", "\x1b[22m\x1b[2m"),
-		italic: f("\x1b[3m", "\x1b[23m"),
-		underline: f("\x1b[4m", "\x1b[24m"),
-		inverse: f("\x1b[7m", "\x1b[27m"),
-		hidden: f("\x1b[8m", "\x1b[28m"),
-		strikethrough: f("\x1b[9m", "\x1b[29m"),
-
-		black: f("\x1b[30m", "\x1b[39m"),
-		red: f("\x1b[31m", "\x1b[39m"),
-		green: f("\x1b[32m", "\x1b[39m"),
-		yellow: f("\x1b[33m", "\x1b[39m"),
-		blue: f("\x1b[34m", "\x1b[39m"),
-		magenta: f("\x1b[35m", "\x1b[39m"),
-		cyan: f("\x1b[36m", "\x1b[39m"),
-		white: f("\x1b[37m", "\x1b[39m"),
-		gray: f("\x1b[90m", "\x1b[39m"),
-
-		bgBlack: f("\x1b[40m", "\x1b[49m"),
-		bgRed: f("\x1b[41m", "\x1b[49m"),
-		bgGreen: f("\x1b[42m", "\x1b[49m"),
-		bgYellow: f("\x1b[43m", "\x1b[49m"),
-		bgBlue: f("\x1b[44m", "\x1b[49m"),
-		bgMagenta: f("\x1b[45m", "\x1b[49m"),
-		bgCyan: f("\x1b[46m", "\x1b[49m"),
-		bgWhite: f("\x1b[47m", "\x1b[49m"),
-
-		blackBright: f("\x1b[90m", "\x1b[39m"),
-		redBright: f("\x1b[91m", "\x1b[39m"),
-		greenBright: f("\x1b[92m", "\x1b[39m"),
-		yellowBright: f("\x1b[93m", "\x1b[39m"),
-		blueBright: f("\x1b[94m", "\x1b[39m"),
-		magentaBright: f("\x1b[95m", "\x1b[39m"),
-		cyanBright: f("\x1b[96m", "\x1b[39m"),
-		whiteBright: f("\x1b[97m", "\x1b[39m"),
-
-		bgBlackBright: f("\x1b[100m", "\x1b[49m"),
-		bgRedBright: f("\x1b[101m", "\x1b[49m"),
-		bgGreenBright: f("\x1b[102m", "\x1b[49m"),
-		bgYellowBright: f("\x1b[103m", "\x1b[49m"),
-		bgBlueBright: f("\x1b[104m", "\x1b[49m"),
-		bgMagentaBright: f("\x1b[105m", "\x1b[49m"),
-		bgCyanBright: f("\x1b[106m", "\x1b[49m"),
-		bgWhiteBright: f("\x1b[107m", "\x1b[49m"),
-	}
-}
-
-module.exports = createColors()
-module.exports.createColors = createColors
 
 
 /***/ }),
@@ -49172,7 +49172,7 @@ exports.GithubActionLogger = GithubActionLogger;
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.logger = void 0;
-const goreleaser_npm_publisher_1 = __nccwpck_require__(3850);
+const goreleaser_npm_publisher_1 = __nccwpck_require__(4172);
 const github_action_logger_1 = __nccwpck_require__(6925);
 exports.logger = new github_action_logger_1.GithubActionLogger();
 (0, goreleaser_npm_publisher_1.setLogger)(exports.logger);
@@ -49187,7 +49187,7 @@ exports.logger = new github_action_logger_1.GithubActionLogger();
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.run = run;
-const goreleaser_npm_publisher_1 = __nccwpck_require__(3850);
+const goreleaser_npm_publisher_1 = __nccwpck_require__(4172);
 const node_process_1 = __nccwpck_require__(1708);
 const inputs_1 = __nccwpck_require__(8422);
 const logger_1 = __nccwpck_require__(4752);
@@ -51138,813 +51138,18 @@ module.exports = parseParams
 
 /***/ }),
 
-/***/ 4352:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-const { normalizeIPv6, normalizeIPv4, removeDotSegments, recomposeAuthority, normalizeComponentEncoding } = __nccwpck_require__(5077)
-const SCHEMES = __nccwpck_require__(5300)
-
-function normalize (uri, options) {
-  if (typeof uri === 'string') {
-    uri = serialize(parse(uri, options), options)
-  } else if (typeof uri === 'object') {
-    uri = parse(serialize(uri, options), options)
-  }
-  return uri
-}
-
-function resolve (baseURI, relativeURI, options) {
-  const schemelessOptions = Object.assign({ scheme: 'null' }, options)
-  const resolved = resolveComponents(parse(baseURI, schemelessOptions), parse(relativeURI, schemelessOptions), schemelessOptions, true)
-  return serialize(resolved, { ...schemelessOptions, skipEscape: true })
-}
-
-function resolveComponents (base, relative, options, skipNormalization) {
-  const target = {}
-  if (!skipNormalization) {
-    base = parse(serialize(base, options), options) // normalize base components
-    relative = parse(serialize(relative, options), options) // normalize relative components
-  }
-  options = options || {}
-
-  if (!options.tolerant && relative.scheme) {
-    target.scheme = relative.scheme
-    // target.authority = relative.authority;
-    target.userinfo = relative.userinfo
-    target.host = relative.host
-    target.port = relative.port
-    target.path = removeDotSegments(relative.path || '')
-    target.query = relative.query
-  } else {
-    if (relative.userinfo !== undefined || relative.host !== undefined || relative.port !== undefined) {
-      // target.authority = relative.authority;
-      target.userinfo = relative.userinfo
-      target.host = relative.host
-      target.port = relative.port
-      target.path = removeDotSegments(relative.path || '')
-      target.query = relative.query
-    } else {
-      if (!relative.path) {
-        target.path = base.path
-        if (relative.query !== undefined) {
-          target.query = relative.query
-        } else {
-          target.query = base.query
-        }
-      } else {
-        if (relative.path.charAt(0) === '/') {
-          target.path = removeDotSegments(relative.path)
-        } else {
-          if ((base.userinfo !== undefined || base.host !== undefined || base.port !== undefined) && !base.path) {
-            target.path = '/' + relative.path
-          } else if (!base.path) {
-            target.path = relative.path
-          } else {
-            target.path = base.path.slice(0, base.path.lastIndexOf('/') + 1) + relative.path
-          }
-          target.path = removeDotSegments(target.path)
-        }
-        target.query = relative.query
-      }
-      // target.authority = base.authority;
-      target.userinfo = base.userinfo
-      target.host = base.host
-      target.port = base.port
-    }
-    target.scheme = base.scheme
-  }
-
-  target.fragment = relative.fragment
-
-  return target
-}
-
-function equal (uriA, uriB, options) {
-  if (typeof uriA === 'string') {
-    uriA = unescape(uriA)
-    uriA = serialize(normalizeComponentEncoding(parse(uriA, options), true), { ...options, skipEscape: true })
-  } else if (typeof uriA === 'object') {
-    uriA = serialize(normalizeComponentEncoding(uriA, true), { ...options, skipEscape: true })
-  }
-
-  if (typeof uriB === 'string') {
-    uriB = unescape(uriB)
-    uriB = serialize(normalizeComponentEncoding(parse(uriB, options), true), { ...options, skipEscape: true })
-  } else if (typeof uriB === 'object') {
-    uriB = serialize(normalizeComponentEncoding(uriB, true), { ...options, skipEscape: true })
-  }
-
-  return uriA.toLowerCase() === uriB.toLowerCase()
-}
-
-function serialize (cmpts, opts) {
-  const components = {
-    host: cmpts.host,
-    scheme: cmpts.scheme,
-    userinfo: cmpts.userinfo,
-    port: cmpts.port,
-    path: cmpts.path,
-    query: cmpts.query,
-    nid: cmpts.nid,
-    nss: cmpts.nss,
-    uuid: cmpts.uuid,
-    fragment: cmpts.fragment,
-    reference: cmpts.reference,
-    resourceName: cmpts.resourceName,
-    secure: cmpts.secure,
-    error: ''
-  }
-  const options = Object.assign({}, opts)
-  const uriTokens = []
-
-  // find scheme handler
-  const schemeHandler = SCHEMES[(options.scheme || components.scheme || '').toLowerCase()]
-
-  // perform scheme specific serialization
-  if (schemeHandler && schemeHandler.serialize) schemeHandler.serialize(components, options)
-
-  if (components.path !== undefined) {
-    if (!options.skipEscape) {
-      components.path = escape(components.path)
-
-      if (components.scheme !== undefined) {
-        components.path = components.path.split('%3A').join(':')
-      }
-    } else {
-      components.path = unescape(components.path)
-    }
-  }
-
-  if (options.reference !== 'suffix' && components.scheme) {
-    uriTokens.push(components.scheme, ':')
-  }
-
-  const authority = recomposeAuthority(components, options)
-  if (authority !== undefined) {
-    if (options.reference !== 'suffix') {
-      uriTokens.push('//')
-    }
-
-    uriTokens.push(authority)
-
-    if (components.path && components.path.charAt(0) !== '/') {
-      uriTokens.push('/')
-    }
-  }
-  if (components.path !== undefined) {
-    let s = components.path
-
-    if (!options.absolutePath && (!schemeHandler || !schemeHandler.absolutePath)) {
-      s = removeDotSegments(s)
-    }
-
-    if (authority === undefined) {
-      s = s.replace(/^\/\//u, '/%2F') // don't allow the path to start with "//"
-    }
-
-    uriTokens.push(s)
-  }
-
-  if (components.query !== undefined) {
-    uriTokens.push('?', components.query)
-  }
-
-  if (components.fragment !== undefined) {
-    uriTokens.push('#', components.fragment)
-  }
-  return uriTokens.join('')
-}
-
-const hexLookUp = Array.from({ length: 127 }, (v, k) => /[^!"$&'()*+,\-.;=_`a-z{}~]/u.test(String.fromCharCode(k)))
-
-function nonSimpleDomain (value) {
-  let code = 0
-  for (let i = 0, len = value.length; i < len; ++i) {
-    code = value.charCodeAt(i)
-    if (code > 126 || hexLookUp[code]) {
-      return true
-    }
-  }
-  return false
-}
-
-const URI_PARSE = /^(?:([^#/:?]+):)?(?:\/\/((?:([^#/?@]*)@)?(\[[^#/?\]]+\]|[^#/:?]*)(?::(\d*))?))?([^#?]*)(?:\?([^#]*))?(?:#((?:.|[\n\r])*))?/u
-
-function parse (uri, opts) {
-  const options = Object.assign({}, opts)
-  const parsed = {
-    scheme: undefined,
-    userinfo: undefined,
-    host: '',
-    port: undefined,
-    path: '',
-    query: undefined,
-    fragment: undefined
-  }
-  const gotEncoding = uri.indexOf('%') !== -1
-  let isIP = false
-  if (options.reference === 'suffix') uri = (options.scheme ? options.scheme + ':' : '') + '//' + uri
-
-  const matches = uri.match(URI_PARSE)
-
-  if (matches) {
-    // store each component
-    parsed.scheme = matches[1]
-    parsed.userinfo = matches[3]
-    parsed.host = matches[4]
-    parsed.port = parseInt(matches[5], 10)
-    parsed.path = matches[6] || ''
-    parsed.query = matches[7]
-    parsed.fragment = matches[8]
-
-    // fix port number
-    if (isNaN(parsed.port)) {
-      parsed.port = matches[5]
-    }
-    if (parsed.host) {
-      const ipv4result = normalizeIPv4(parsed.host)
-      if (ipv4result.isIPV4 === false) {
-        const ipv6result = normalizeIPv6(ipv4result.host, { isIPV4: false })
-        parsed.host = ipv6result.host.toLowerCase()
-        isIP = ipv6result.isIPV6
-      } else {
-        parsed.host = ipv4result.host
-        isIP = true
-      }
-    }
-    if (parsed.scheme === undefined && parsed.userinfo === undefined && parsed.host === undefined && parsed.port === undefined && !parsed.path && parsed.query === undefined) {
-      parsed.reference = 'same-document'
-    } else if (parsed.scheme === undefined) {
-      parsed.reference = 'relative'
-    } else if (parsed.fragment === undefined) {
-      parsed.reference = 'absolute'
-    } else {
-      parsed.reference = 'uri'
-    }
-
-    // check for reference errors
-    if (options.reference && options.reference !== 'suffix' && options.reference !== parsed.reference) {
-      parsed.error = parsed.error || 'URI is not a ' + options.reference + ' reference.'
-    }
-
-    // find scheme handler
-    const schemeHandler = SCHEMES[(options.scheme || parsed.scheme || '').toLowerCase()]
-
-    // check if scheme can't handle IRIs
-    if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport)) {
-      // if host component is a domain name
-      if (parsed.host && (options.domainHost || (schemeHandler && schemeHandler.domainHost)) && isIP === false && nonSimpleDomain(parsed.host)) {
-        // convert Unicode IDN -> ASCII IDN
-        try {
-          parsed.host = URL.domainToASCII(parsed.host.toLowerCase())
-        } catch (e) {
-          parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e
-        }
-      }
-      // convert IRI -> URI
-    }
-
-    if (!schemeHandler || (schemeHandler && !schemeHandler.skipNormalize)) {
-      if (gotEncoding && parsed.scheme !== undefined) {
-        parsed.scheme = unescape(parsed.scheme)
-      }
-      if (gotEncoding && parsed.host !== undefined) {
-        parsed.host = unescape(parsed.host)
-      }
-      if (parsed.path !== undefined && parsed.path.length) {
-        parsed.path = escape(unescape(parsed.path))
-      }
-      if (parsed.fragment !== undefined && parsed.fragment.length) {
-        parsed.fragment = encodeURI(decodeURIComponent(parsed.fragment))
-      }
-    }
-
-    // perform scheme specific parsing
-    if (schemeHandler && schemeHandler.parse) {
-      schemeHandler.parse(parsed, options)
-    }
-  } else {
-    parsed.error = parsed.error || 'URI can not be parsed.'
-  }
-  return parsed
-}
-
-const fastUri = {
-  SCHEMES,
-  normalize,
-  resolve,
-  resolveComponents,
-  equal,
-  serialize,
-  parse
-}
-
-module.exports = fastUri
-module.exports["default"] = fastUri
-module.exports.fastUri = fastUri
-
-
-/***/ }),
-
-/***/ 5300:
-/***/ ((module) => {
-
-"use strict";
-
-
-const UUID_REG = /^[\da-f]{8}\b-[\da-f]{4}\b-[\da-f]{4}\b-[\da-f]{4}\b-[\da-f]{12}$/iu
-const URN_REG = /([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-.:;=@]|%[\da-f]{2})+)/iu
-
-function isSecure (wsComponents) {
-  return typeof wsComponents.secure === 'boolean' ? wsComponents.secure : String(wsComponents.scheme).toLowerCase() === 'wss'
-}
-
-function httpParse (components) {
-  if (!components.host) {
-    components.error = components.error || 'HTTP URIs must have a host.'
-  }
-
-  return components
-}
-
-function httpSerialize (components) {
-  const secure = String(components.scheme).toLowerCase() === 'https'
-
-  // normalize the default port
-  if (components.port === (secure ? 443 : 80) || components.port === '') {
-    components.port = undefined
-  }
-
-  // normalize the empty path
-  if (!components.path) {
-    components.path = '/'
-  }
-
-  // NOTE: We do not parse query strings for HTTP URIs
-  // as WWW Form Url Encoded query strings are part of the HTML4+ spec,
-  // and not the HTTP spec.
-
-  return components
-}
-
-function wsParse (wsComponents) {
-// indicate if the secure flag is set
-  wsComponents.secure = isSecure(wsComponents)
-
-  // construct resouce name
-  wsComponents.resourceName = (wsComponents.path || '/') + (wsComponents.query ? '?' + wsComponents.query : '')
-  wsComponents.path = undefined
-  wsComponents.query = undefined
-
-  return wsComponents
-}
-
-function wsSerialize (wsComponents) {
-// normalize the default port
-  if (wsComponents.port === (isSecure(wsComponents) ? 443 : 80) || wsComponents.port === '') {
-    wsComponents.port = undefined
-  }
-
-  // ensure scheme matches secure flag
-  if (typeof wsComponents.secure === 'boolean') {
-    wsComponents.scheme = (wsComponents.secure ? 'wss' : 'ws')
-    wsComponents.secure = undefined
-  }
-
-  // reconstruct path from resource name
-  if (wsComponents.resourceName) {
-    const [path, query] = wsComponents.resourceName.split('?')
-    wsComponents.path = (path && path !== '/' ? path : undefined)
-    wsComponents.query = query
-    wsComponents.resourceName = undefined
-  }
-
-  // forbid fragment component
-  wsComponents.fragment = undefined
-
-  return wsComponents
-}
-
-function urnParse (urnComponents, options) {
-  if (!urnComponents.path) {
-    urnComponents.error = 'URN can not be parsed'
-    return urnComponents
-  }
-  const matches = urnComponents.path.match(URN_REG)
-  if (matches) {
-    const scheme = options.scheme || urnComponents.scheme || 'urn'
-    urnComponents.nid = matches[1].toLowerCase()
-    urnComponents.nss = matches[2]
-    const urnScheme = `${scheme}:${options.nid || urnComponents.nid}`
-    const schemeHandler = SCHEMES[urnScheme]
-    urnComponents.path = undefined
-
-    if (schemeHandler) {
-      urnComponents = schemeHandler.parse(urnComponents, options)
-    }
-  } else {
-    urnComponents.error = urnComponents.error || 'URN can not be parsed.'
-  }
-
-  return urnComponents
-}
-
-function urnSerialize (urnComponents, options) {
-  const scheme = options.scheme || urnComponents.scheme || 'urn'
-  const nid = urnComponents.nid.toLowerCase()
-  const urnScheme = `${scheme}:${options.nid || nid}`
-  const schemeHandler = SCHEMES[urnScheme]
-
-  if (schemeHandler) {
-    urnComponents = schemeHandler.serialize(urnComponents, options)
-  }
-
-  const uriComponents = urnComponents
-  const nss = urnComponents.nss
-  uriComponents.path = `${nid || options.nid}:${nss}`
-
-  options.skipEscape = true
-  return uriComponents
-}
-
-function urnuuidParse (urnComponents, options) {
-  const uuidComponents = urnComponents
-  uuidComponents.uuid = uuidComponents.nss
-  uuidComponents.nss = undefined
-
-  if (!options.tolerant && (!uuidComponents.uuid || !UUID_REG.test(uuidComponents.uuid))) {
-    uuidComponents.error = uuidComponents.error || 'UUID is not valid.'
-  }
-
-  return uuidComponents
-}
-
-function urnuuidSerialize (uuidComponents) {
-  const urnComponents = uuidComponents
-  // normalize UUID
-  urnComponents.nss = (uuidComponents.uuid || '').toLowerCase()
-  return urnComponents
-}
-
-const http = {
-  scheme: 'http',
-  domainHost: true,
-  parse: httpParse,
-  serialize: httpSerialize
-}
-
-const https = {
-  scheme: 'https',
-  domainHost: http.domainHost,
-  parse: httpParse,
-  serialize: httpSerialize
-}
-
-const ws = {
-  scheme: 'ws',
-  domainHost: true,
-  parse: wsParse,
-  serialize: wsSerialize
-}
-
-const wss = {
-  scheme: 'wss',
-  domainHost: ws.domainHost,
-  parse: ws.parse,
-  serialize: ws.serialize
-}
-
-const urn = {
-  scheme: 'urn',
-  parse: urnParse,
-  serialize: urnSerialize,
-  skipNormalize: true
-}
-
-const urnuuid = {
-  scheme: 'urn:uuid',
-  parse: urnuuidParse,
-  serialize: urnuuidSerialize,
-  skipNormalize: true
-}
-
-const SCHEMES = {
-  http,
-  https,
-  ws,
-  wss,
-  urn,
-  'urn:uuid': urnuuid
-}
-
-module.exports = SCHEMES
-
-
-/***/ }),
-
-/***/ 1553:
-/***/ ((module) => {
-
-"use strict";
-
-
-const HEX = {
-  0: 0,
-  1: 1,
-  2: 2,
-  3: 3,
-  4: 4,
-  5: 5,
-  6: 6,
-  7: 7,
-  8: 8,
-  9: 9,
-  a: 10,
-  A: 10,
-  b: 11,
-  B: 11,
-  c: 12,
-  C: 12,
-  d: 13,
-  D: 13,
-  e: 14,
-  E: 14,
-  f: 15,
-  F: 15
-}
-
-module.exports = {
-  HEX
-}
-
-
-/***/ }),
-
-/***/ 5077:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-const { HEX } = __nccwpck_require__(1553)
-
-function normalizeIPv4 (host) {
-  if (findToken(host, '.') < 3) { return { host, isIPV4: false } }
-  const matches = host.match(/^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/u) || []
-  const [address] = matches
-  if (address) {
-    return { host: stripLeadingZeros(address, '.'), isIPV4: true }
-  } else {
-    return { host, isIPV4: false }
-  }
-}
-
-/**
- * @param {string[]} input
- * @param {boolean} [keepZero=false]
- * @returns {string|undefined}
- */
-function stringArrayToHexStripped (input, keepZero = false) {
-  let acc = ''
-  let strip = true
-  for (const c of input) {
-    if (HEX[c] === undefined) return undefined
-    if (c !== '0' && strip === true) strip = false
-    if (!strip) acc += c
-  }
-  if (keepZero && acc.length === 0) acc = '0'
-  return acc
-}
-
-function getIPV6 (input) {
-  let tokenCount = 0
-  const output = { error: false, address: '', zone: '' }
-  const address = []
-  const buffer = []
-  let isZone = false
-  let endipv6Encountered = false
-  let endIpv6 = false
-
-  function consume () {
-    if (buffer.length) {
-      if (isZone === false) {
-        const hex = stringArrayToHexStripped(buffer)
-        if (hex !== undefined) {
-          address.push(hex)
-        } else {
-          output.error = true
-          return false
-        }
-      }
-      buffer.length = 0
-    }
-    return true
-  }
-
-  for (let i = 0; i < input.length; i++) {
-    const cursor = input[i]
-    if (cursor === '[' || cursor === ']') { continue }
-    if (cursor === ':') {
-      if (endipv6Encountered === true) {
-        endIpv6 = true
-      }
-      if (!consume()) { break }
-      tokenCount++
-      address.push(':')
-      if (tokenCount > 7) {
-        // not valid
-        output.error = true
-        break
-      }
-      if (i - 1 >= 0 && input[i - 1] === ':') {
-        endipv6Encountered = true
-      }
-      continue
-    } else if (cursor === '%') {
-      if (!consume()) { break }
-      // switch to zone detection
-      isZone = true
-    } else {
-      buffer.push(cursor)
-      continue
-    }
-  }
-  if (buffer.length) {
-    if (isZone) {
-      output.zone = buffer.join('')
-    } else if (endIpv6) {
-      address.push(buffer.join(''))
-    } else {
-      address.push(stringArrayToHexStripped(buffer))
-    }
-  }
-  output.address = address.join('')
-  return output
-}
-
-function normalizeIPv6 (host, opts = {}) {
-  if (findToken(host, ':') < 2) { return { host, isIPV6: false } }
-  const ipv6 = getIPV6(host)
-
-  if (!ipv6.error) {
-    let newHost = ipv6.address
-    let escapedHost = ipv6.address
-    if (ipv6.zone) {
-      newHost += '%' + ipv6.zone
-      escapedHost += '%25' + ipv6.zone
-    }
-    return { host: newHost, escapedHost, isIPV6: true }
-  } else {
-    return { host, isIPV6: false }
-  }
-}
-
-function stripLeadingZeros (str, token) {
-  let out = ''
-  let skip = true
-  const l = str.length
-  for (let i = 0; i < l; i++) {
-    const c = str[i]
-    if (c === '0' && skip) {
-      if ((i + 1 <= l && str[i + 1] === token) || i + 1 === l) {
-        out += c
-        skip = false
-      }
-    } else {
-      if (c === token) {
-        skip = true
-      } else {
-        skip = false
-      }
-      out += c
-    }
-  }
-  return out
-}
-
-function findToken (str, token) {
-  let ind = 0
-  for (let i = 0; i < str.length; i++) {
-    if (str[i] === token) ind++
-  }
-  return ind
-}
-
-const RDS1 = /^\.\.?\//u
-const RDS2 = /^\/\.(?:\/|$)/u
-const RDS3 = /^\/\.\.(?:\/|$)/u
-const RDS5 = /^\/?(?:.|\n)*?(?=\/|$)/u
-
-function removeDotSegments (input) {
-  const output = []
-
-  while (input.length) {
-    if (input.match(RDS1)) {
-      input = input.replace(RDS1, '')
-    } else if (input.match(RDS2)) {
-      input = input.replace(RDS2, '/')
-    } else if (input.match(RDS3)) {
-      input = input.replace(RDS3, '/')
-      output.pop()
-    } else if (input === '.' || input === '..') {
-      input = ''
-    } else {
-      const im = input.match(RDS5)
-      if (im) {
-        const s = im[0]
-        input = input.slice(s.length)
-        output.push(s)
-      } else {
-        throw new Error('Unexpected dot segment condition')
-      }
-    }
-  }
-  return output.join('')
-}
-
-function normalizeComponentEncoding (components, esc) {
-  const func = esc !== true ? escape : unescape
-  if (components.scheme !== undefined) {
-    components.scheme = func(components.scheme)
-  }
-  if (components.userinfo !== undefined) {
-    components.userinfo = func(components.userinfo)
-  }
-  if (components.host !== undefined) {
-    components.host = func(components.host)
-  }
-  if (components.path !== undefined) {
-    components.path = func(components.path)
-  }
-  if (components.query !== undefined) {
-    components.query = func(components.query)
-  }
-  if (components.fragment !== undefined) {
-    components.fragment = func(components.fragment)
-  }
-  return components
-}
-
-function recomposeAuthority (components, options) {
-  const uriTokens = []
-
-  if (components.userinfo !== undefined) {
-    uriTokens.push(components.userinfo)
-    uriTokens.push('@')
-  }
-
-  if (components.host !== undefined) {
-    let host = unescape(components.host)
-    const ipV4res = normalizeIPv4(host)
-
-    if (ipV4res.isIPV4) {
-      host = ipV4res.host
-    } else {
-      const ipV6res = normalizeIPv6(ipV4res.host, { isIPV4: false })
-      if (ipV6res.isIPV6 === true) {
-        host = `[${ipV6res.escapedHost}]`
-      } else {
-        host = components.host
-      }
-    }
-    uriTokens.push(host)
-  }
-
-  if (typeof components.port === 'number' || typeof components.port === 'string') {
-    uriTokens.push(':')
-    uriTokens.push(String(components.port))
-  }
-
-  return uriTokens.length ? uriTokens.join('') : undefined
-};
-
-module.exports = {
-  recomposeAuthority,
-  normalizeComponentEncoding,
-  removeDotSegments,
-  normalizeIPv4,
-  normalizeIPv6,
-  stringArrayToHexStripped
-}
-
-
-/***/ }),
-
-/***/ 2399:
+/***/ 8559:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Glob = void 0;
-const minimatch_1 = __nccwpck_require__(2329);
+const minimatch_1 = __nccwpck_require__(5257);
 const node_url_1 = __nccwpck_require__(3136);
-const path_scurry_1 = __nccwpck_require__(1191);
-const pattern_js_1 = __nccwpck_require__(4343);
-const walker_js_1 = __nccwpck_require__(2308);
+const path_scurry_1 = __nccwpck_require__(6577);
+const pattern_js_1 = __nccwpck_require__(3767);
+const walker_js_1 = __nccwpck_require__(1191);
 // if no process global, just call it linux.
 // so we default to case-sensitive, / separators
 const defaultPlatform = (typeof process === 'object' &&
@@ -52187,14 +51392,14 @@ exports.Glob = Glob;
 
 /***/ }),
 
-/***/ 2859:
+/***/ 5067:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.hasMagic = void 0;
-const minimatch_1 = __nccwpck_require__(2329);
+const minimatch_1 = __nccwpck_require__(5257);
 /**
  * Return true if the patterns provided contain any magic glob characters,
  * given the options provided.
@@ -52221,7 +51426,7 @@ exports.hasMagic = hasMagic;
 
 /***/ }),
 
-/***/ 5315:
+/***/ 8387:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -52232,8 +51437,8 @@ exports.hasMagic = hasMagic;
 // Ignores are always parsed in dot:true mode
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Ignore = void 0;
-const minimatch_1 = __nccwpck_require__(2329);
-const pattern_js_1 = __nccwpck_require__(4343);
+const minimatch_1 = __nccwpck_require__(5257);
+const pattern_js_1 = __nccwpck_require__(3767);
 const defaultPlatform = (typeof process === 'object' &&
     process &&
     typeof process.platform === 'string') ?
@@ -52347,7 +51552,7 @@ exports.Ignore = Ignore;
 
 /***/ }),
 
-/***/ 3529:
+/***/ 8841:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -52359,17 +51564,17 @@ exports.globStream = globStream;
 exports.globSync = globSync;
 exports.globIterateSync = globIterateSync;
 exports.globIterate = globIterate;
-const minimatch_1 = __nccwpck_require__(2329);
-const glob_js_1 = __nccwpck_require__(2399);
-const has_magic_js_1 = __nccwpck_require__(2859);
-var minimatch_2 = __nccwpck_require__(2329);
+const minimatch_1 = __nccwpck_require__(5257);
+const glob_js_1 = __nccwpck_require__(8559);
+const has_magic_js_1 = __nccwpck_require__(5067);
+var minimatch_2 = __nccwpck_require__(5257);
 Object.defineProperty(exports, "escape", ({ enumerable: true, get: function () { return minimatch_2.escape; } }));
 Object.defineProperty(exports, "unescape", ({ enumerable: true, get: function () { return minimatch_2.unescape; } }));
-var glob_js_2 = __nccwpck_require__(2399);
+var glob_js_2 = __nccwpck_require__(8559);
 Object.defineProperty(exports, "Glob", ({ enumerable: true, get: function () { return glob_js_2.Glob; } }));
-var has_magic_js_2 = __nccwpck_require__(2859);
+var has_magic_js_2 = __nccwpck_require__(5067);
 Object.defineProperty(exports, "hasMagic", ({ enumerable: true, get: function () { return has_magic_js_2.hasMagic; } }));
-var ignore_js_1 = __nccwpck_require__(5315);
+var ignore_js_1 = __nccwpck_require__(8387);
 Object.defineProperty(exports, "Ignore", ({ enumerable: true, get: function () { return ignore_js_1.Ignore; } }));
 function globStreamSync(pattern, options = {}) {
     return new glob_js_1.Glob(pattern, options).streamSync();
@@ -52422,7 +51627,7 @@ exports.glob.glob = exports.glob;
 
 /***/ }),
 
-/***/ 4343:
+/***/ 3767:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -52430,7 +51635,7 @@ exports.glob.glob = exports.glob;
 // this is just a very light wrapper around 2 arrays with an offset index
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Pattern = void 0;
-const minimatch_1 = __nccwpck_require__(2329);
+const minimatch_1 = __nccwpck_require__(5257);
 const isPatternList = (pl) => pl.length >= 1;
 const isGlobList = (gl) => gl.length >= 1;
 /**
@@ -52648,7 +51853,7 @@ exports.Pattern = Pattern;
 
 /***/ }),
 
-/***/ 9721:
+/***/ 8294:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -52656,7 +51861,7 @@ exports.Pattern = Pattern;
 // synchronous utility for filtering entries and calculating subwalks
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Processor = exports.SubWalks = exports.MatchRecord = exports.HasWalkedCache = void 0;
-const minimatch_1 = __nccwpck_require__(2329);
+const minimatch_1 = __nccwpck_require__(5257);
 /**
  * A cache of which patterns have been processed for a given Path
  */
@@ -52956,7 +52161,7 @@ exports.Processor = Processor;
 
 /***/ }),
 
-/***/ 2308:
+/***/ 1191:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -52970,8 +52175,8 @@ exports.GlobStream = exports.GlobWalker = exports.GlobUtil = void 0;
  * @module
  */
 const minipass_1 = __nccwpck_require__(8275);
-const ignore_js_1 = __nccwpck_require__(5315);
-const processor_js_1 = __nccwpck_require__(9721);
+const ignore_js_1 = __nccwpck_require__(8387);
+const processor_js_1 = __nccwpck_require__(8294);
 const makeIgnore = (ignore, opts) => typeof ignore === 'string' ? new ignore_js_1.Ignore([ignore], opts)
     : Array.isArray(ignore) ? new ignore_js_1.Ignore(ignore, opts)
         : ignore;
@@ -53350,1560 +52555,7 @@ exports.GlobStream = GlobStream;
 
 /***/ }),
 
-/***/ 2871:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
-/**
- * @module LRUCache
- */
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.LRUCache = void 0;
-const perf = typeof performance === 'object' &&
-    performance &&
-    typeof performance.now === 'function'
-    ? performance
-    : Date;
-const warned = new Set();
-/* c8 ignore start */
-const PROCESS = (typeof process === 'object' && !!process ? process : {});
-/* c8 ignore start */
-const emitWarning = (msg, type, code, fn) => {
-    typeof PROCESS.emitWarning === 'function'
-        ? PROCESS.emitWarning(msg, type, code, fn)
-        : console.error(`[${code}] ${type}: ${msg}`);
-};
-let AC = globalThis.AbortController;
-let AS = globalThis.AbortSignal;
-/* c8 ignore start */
-if (typeof AC === 'undefined') {
-    //@ts-ignore
-    AS = class AbortSignal {
-        onabort;
-        _onabort = [];
-        reason;
-        aborted = false;
-        addEventListener(_, fn) {
-            this._onabort.push(fn);
-        }
-    };
-    //@ts-ignore
-    AC = class AbortController {
-        constructor() {
-            warnACPolyfill();
-        }
-        signal = new AS();
-        abort(reason) {
-            if (this.signal.aborted)
-                return;
-            //@ts-ignore
-            this.signal.reason = reason;
-            //@ts-ignore
-            this.signal.aborted = true;
-            //@ts-ignore
-            for (const fn of this.signal._onabort) {
-                fn(reason);
-            }
-            this.signal.onabort?.(reason);
-        }
-    };
-    let printACPolyfillWarning = PROCESS.env?.LRU_CACHE_IGNORE_AC_WARNING !== '1';
-    const warnACPolyfill = () => {
-        if (!printACPolyfillWarning)
-            return;
-        printACPolyfillWarning = false;
-        emitWarning('AbortController is not defined. If using lru-cache in ' +
-            'node 14, load an AbortController polyfill from the ' +
-            '`node-abort-controller` package. A minimal polyfill is ' +
-            'provided for use by LRUCache.fetch(), but it should not be ' +
-            'relied upon in other contexts (eg, passing it to other APIs that ' +
-            'use AbortController/AbortSignal might have undesirable effects). ' +
-            'You may disable this with LRU_CACHE_IGNORE_AC_WARNING=1 in the env.', 'NO_ABORT_CONTROLLER', 'ENOTSUP', warnACPolyfill);
-    };
-}
-/* c8 ignore stop */
-const shouldWarn = (code) => !warned.has(code);
-const TYPE = Symbol('type');
-const isPosInt = (n) => n && n === Math.floor(n) && n > 0 && isFinite(n);
-/* c8 ignore start */
-// This is a little bit ridiculous, tbh.
-// The maximum array length is 2^32-1 or thereabouts on most JS impls.
-// And well before that point, you're caching the entire world, I mean,
-// that's ~32GB of just integers for the next/prev links, plus whatever
-// else to hold that many keys and values.  Just filling the memory with
-// zeroes at init time is brutal when you get that big.
-// But why not be complete?
-// Maybe in the future, these limits will have expanded.
-const getUintArray = (max) => !isPosInt(max)
-    ? null
-    : max <= Math.pow(2, 8)
-        ? Uint8Array
-        : max <= Math.pow(2, 16)
-            ? Uint16Array
-            : max <= Math.pow(2, 32)
-                ? Uint32Array
-                : max <= Number.MAX_SAFE_INTEGER
-                    ? ZeroArray
-                    : null;
-/* c8 ignore stop */
-class ZeroArray extends Array {
-    constructor(size) {
-        super(size);
-        this.fill(0);
-    }
-}
-class Stack {
-    heap;
-    length;
-    // private constructor
-    static #constructing = false;
-    static create(max) {
-        const HeapCls = getUintArray(max);
-        if (!HeapCls)
-            return [];
-        Stack.#constructing = true;
-        const s = new Stack(max, HeapCls);
-        Stack.#constructing = false;
-        return s;
-    }
-    constructor(max, HeapCls) {
-        /* c8 ignore start */
-        if (!Stack.#constructing) {
-            throw new TypeError('instantiate Stack using Stack.create(n)');
-        }
-        /* c8 ignore stop */
-        this.heap = new HeapCls(max);
-        this.length = 0;
-    }
-    push(n) {
-        this.heap[this.length++] = n;
-    }
-    pop() {
-        return this.heap[--this.length];
-    }
-}
-/**
- * Default export, the thing you're using this module to get.
- *
- * The `K` and `V` types define the key and value types, respectively. The
- * optional `FC` type defines the type of the `context` object passed to
- * `cache.fetch()` and `cache.memo()`.
- *
- * Keys and values **must not** be `null` or `undefined`.
- *
- * All properties from the options object (with the exception of `max`,
- * `maxSize`, `fetchMethod`, `memoMethod`, `dispose` and `disposeAfter`) are
- * added as normal public members. (The listed options are read-only getters.)
- *
- * Changing any of these will alter the defaults for subsequent method calls.
- */
-class LRUCache {
-    // options that cannot be changed without disaster
-    #max;
-    #maxSize;
-    #dispose;
-    #disposeAfter;
-    #fetchMethod;
-    #memoMethod;
-    /**
-     * {@link LRUCache.OptionsBase.ttl}
-     */
-    ttl;
-    /**
-     * {@link LRUCache.OptionsBase.ttlResolution}
-     */
-    ttlResolution;
-    /**
-     * {@link LRUCache.OptionsBase.ttlAutopurge}
-     */
-    ttlAutopurge;
-    /**
-     * {@link LRUCache.OptionsBase.updateAgeOnGet}
-     */
-    updateAgeOnGet;
-    /**
-     * {@link LRUCache.OptionsBase.updateAgeOnHas}
-     */
-    updateAgeOnHas;
-    /**
-     * {@link LRUCache.OptionsBase.allowStale}
-     */
-    allowStale;
-    /**
-     * {@link LRUCache.OptionsBase.noDisposeOnSet}
-     */
-    noDisposeOnSet;
-    /**
-     * {@link LRUCache.OptionsBase.noUpdateTTL}
-     */
-    noUpdateTTL;
-    /**
-     * {@link LRUCache.OptionsBase.maxEntrySize}
-     */
-    maxEntrySize;
-    /**
-     * {@link LRUCache.OptionsBase.sizeCalculation}
-     */
-    sizeCalculation;
-    /**
-     * {@link LRUCache.OptionsBase.noDeleteOnFetchRejection}
-     */
-    noDeleteOnFetchRejection;
-    /**
-     * {@link LRUCache.OptionsBase.noDeleteOnStaleGet}
-     */
-    noDeleteOnStaleGet;
-    /**
-     * {@link LRUCache.OptionsBase.allowStaleOnFetchAbort}
-     */
-    allowStaleOnFetchAbort;
-    /**
-     * {@link LRUCache.OptionsBase.allowStaleOnFetchRejection}
-     */
-    allowStaleOnFetchRejection;
-    /**
-     * {@link LRUCache.OptionsBase.ignoreFetchAbort}
-     */
-    ignoreFetchAbort;
-    // computed properties
-    #size;
-    #calculatedSize;
-    #keyMap;
-    #keyList;
-    #valList;
-    #next;
-    #prev;
-    #head;
-    #tail;
-    #free;
-    #disposed;
-    #sizes;
-    #starts;
-    #ttls;
-    #hasDispose;
-    #hasFetchMethod;
-    #hasDisposeAfter;
-    /**
-     * Do not call this method unless you need to inspect the
-     * inner workings of the cache.  If anything returned by this
-     * object is modified in any way, strange breakage may occur.
-     *
-     * These fields are private for a reason!
-     *
-     * @internal
-     */
-    static unsafeExposeInternals(c) {
-        return {
-            // properties
-            starts: c.#starts,
-            ttls: c.#ttls,
-            sizes: c.#sizes,
-            keyMap: c.#keyMap,
-            keyList: c.#keyList,
-            valList: c.#valList,
-            next: c.#next,
-            prev: c.#prev,
-            get head() {
-                return c.#head;
-            },
-            get tail() {
-                return c.#tail;
-            },
-            free: c.#free,
-            // methods
-            isBackgroundFetch: (p) => c.#isBackgroundFetch(p),
-            backgroundFetch: (k, index, options, context) => c.#backgroundFetch(k, index, options, context),
-            moveToTail: (index) => c.#moveToTail(index),
-            indexes: (options) => c.#indexes(options),
-            rindexes: (options) => c.#rindexes(options),
-            isStale: (index) => c.#isStale(index),
-        };
-    }
-    // Protected read-only members
-    /**
-     * {@link LRUCache.OptionsBase.max} (read-only)
-     */
-    get max() {
-        return this.#max;
-    }
-    /**
-     * {@link LRUCache.OptionsBase.maxSize} (read-only)
-     */
-    get maxSize() {
-        return this.#maxSize;
-    }
-    /**
-     * The total computed size of items in the cache (read-only)
-     */
-    get calculatedSize() {
-        return this.#calculatedSize;
-    }
-    /**
-     * The number of items stored in the cache (read-only)
-     */
-    get size() {
-        return this.#size;
-    }
-    /**
-     * {@link LRUCache.OptionsBase.fetchMethod} (read-only)
-     */
-    get fetchMethod() {
-        return this.#fetchMethod;
-    }
-    get memoMethod() {
-        return this.#memoMethod;
-    }
-    /**
-     * {@link LRUCache.OptionsBase.dispose} (read-only)
-     */
-    get dispose() {
-        return this.#dispose;
-    }
-    /**
-     * {@link LRUCache.OptionsBase.disposeAfter} (read-only)
-     */
-    get disposeAfter() {
-        return this.#disposeAfter;
-    }
-    constructor(options) {
-        const { max = 0, ttl, ttlResolution = 1, ttlAutopurge, updateAgeOnGet, updateAgeOnHas, allowStale, dispose, disposeAfter, noDisposeOnSet, noUpdateTTL, maxSize = 0, maxEntrySize = 0, sizeCalculation, fetchMethod, memoMethod, noDeleteOnFetchRejection, noDeleteOnStaleGet, allowStaleOnFetchRejection, allowStaleOnFetchAbort, ignoreFetchAbort, } = options;
-        if (max !== 0 && !isPosInt(max)) {
-            throw new TypeError('max option must be a nonnegative integer');
-        }
-        const UintArray = max ? getUintArray(max) : Array;
-        if (!UintArray) {
-            throw new Error('invalid max value: ' + max);
-        }
-        this.#max = max;
-        this.#maxSize = maxSize;
-        this.maxEntrySize = maxEntrySize || this.#maxSize;
-        this.sizeCalculation = sizeCalculation;
-        if (this.sizeCalculation) {
-            if (!this.#maxSize && !this.maxEntrySize) {
-                throw new TypeError('cannot set sizeCalculation without setting maxSize or maxEntrySize');
-            }
-            if (typeof this.sizeCalculation !== 'function') {
-                throw new TypeError('sizeCalculation set to non-function');
-            }
-        }
-        if (memoMethod !== undefined &&
-            typeof memoMethod !== 'function') {
-            throw new TypeError('memoMethod must be a function if defined');
-        }
-        this.#memoMethod = memoMethod;
-        if (fetchMethod !== undefined &&
-            typeof fetchMethod !== 'function') {
-            throw new TypeError('fetchMethod must be a function if specified');
-        }
-        this.#fetchMethod = fetchMethod;
-        this.#hasFetchMethod = !!fetchMethod;
-        this.#keyMap = new Map();
-        this.#keyList = new Array(max).fill(undefined);
-        this.#valList = new Array(max).fill(undefined);
-        this.#next = new UintArray(max);
-        this.#prev = new UintArray(max);
-        this.#head = 0;
-        this.#tail = 0;
-        this.#free = Stack.create(max);
-        this.#size = 0;
-        this.#calculatedSize = 0;
-        if (typeof dispose === 'function') {
-            this.#dispose = dispose;
-        }
-        if (typeof disposeAfter === 'function') {
-            this.#disposeAfter = disposeAfter;
-            this.#disposed = [];
-        }
-        else {
-            this.#disposeAfter = undefined;
-            this.#disposed = undefined;
-        }
-        this.#hasDispose = !!this.#dispose;
-        this.#hasDisposeAfter = !!this.#disposeAfter;
-        this.noDisposeOnSet = !!noDisposeOnSet;
-        this.noUpdateTTL = !!noUpdateTTL;
-        this.noDeleteOnFetchRejection = !!noDeleteOnFetchRejection;
-        this.allowStaleOnFetchRejection = !!allowStaleOnFetchRejection;
-        this.allowStaleOnFetchAbort = !!allowStaleOnFetchAbort;
-        this.ignoreFetchAbort = !!ignoreFetchAbort;
-        // NB: maxEntrySize is set to maxSize if it's set
-        if (this.maxEntrySize !== 0) {
-            if (this.#maxSize !== 0) {
-                if (!isPosInt(this.#maxSize)) {
-                    throw new TypeError('maxSize must be a positive integer if specified');
-                }
-            }
-            if (!isPosInt(this.maxEntrySize)) {
-                throw new TypeError('maxEntrySize must be a positive integer if specified');
-            }
-            this.#initializeSizeTracking();
-        }
-        this.allowStale = !!allowStale;
-        this.noDeleteOnStaleGet = !!noDeleteOnStaleGet;
-        this.updateAgeOnGet = !!updateAgeOnGet;
-        this.updateAgeOnHas = !!updateAgeOnHas;
-        this.ttlResolution =
-            isPosInt(ttlResolution) || ttlResolution === 0
-                ? ttlResolution
-                : 1;
-        this.ttlAutopurge = !!ttlAutopurge;
-        this.ttl = ttl || 0;
-        if (this.ttl) {
-            if (!isPosInt(this.ttl)) {
-                throw new TypeError('ttl must be a positive integer if specified');
-            }
-            this.#initializeTTLTracking();
-        }
-        // do not allow completely unbounded caches
-        if (this.#max === 0 && this.ttl === 0 && this.#maxSize === 0) {
-            throw new TypeError('At least one of max, maxSize, or ttl is required');
-        }
-        if (!this.ttlAutopurge && !this.#max && !this.#maxSize) {
-            const code = 'LRU_CACHE_UNBOUNDED';
-            if (shouldWarn(code)) {
-                warned.add(code);
-                const msg = 'TTL caching without ttlAutopurge, max, or maxSize can ' +
-                    'result in unbounded memory consumption.';
-                emitWarning(msg, 'UnboundedCacheWarning', code, LRUCache);
-            }
-        }
-    }
-    /**
-     * Return the number of ms left in the item's TTL. If item is not in cache,
-     * returns `0`. Returns `Infinity` if item is in cache without a defined TTL.
-     */
-    getRemainingTTL(key) {
-        return this.#keyMap.has(key) ? Infinity : 0;
-    }
-    #initializeTTLTracking() {
-        const ttls = new ZeroArray(this.#max);
-        const starts = new ZeroArray(this.#max);
-        this.#ttls = ttls;
-        this.#starts = starts;
-        this.#setItemTTL = (index, ttl, start = perf.now()) => {
-            starts[index] = ttl !== 0 ? start : 0;
-            ttls[index] = ttl;
-            if (ttl !== 0 && this.ttlAutopurge) {
-                const t = setTimeout(() => {
-                    if (this.#isStale(index)) {
-                        this.#delete(this.#keyList[index], 'expire');
-                    }
-                }, ttl + 1);
-                // unref() not supported on all platforms
-                /* c8 ignore start */
-                if (t.unref) {
-                    t.unref();
-                }
-                /* c8 ignore stop */
-            }
-        };
-        this.#updateItemAge = index => {
-            starts[index] = ttls[index] !== 0 ? perf.now() : 0;
-        };
-        this.#statusTTL = (status, index) => {
-            if (ttls[index]) {
-                const ttl = ttls[index];
-                const start = starts[index];
-                /* c8 ignore next */
-                if (!ttl || !start)
-                    return;
-                status.ttl = ttl;
-                status.start = start;
-                status.now = cachedNow || getNow();
-                const age = status.now - start;
-                status.remainingTTL = ttl - age;
-            }
-        };
-        // debounce calls to perf.now() to 1s so we're not hitting
-        // that costly call repeatedly.
-        let cachedNow = 0;
-        const getNow = () => {
-            const n = perf.now();
-            if (this.ttlResolution > 0) {
-                cachedNow = n;
-                const t = setTimeout(() => (cachedNow = 0), this.ttlResolution);
-                // not available on all platforms
-                /* c8 ignore start */
-                if (t.unref) {
-                    t.unref();
-                }
-                /* c8 ignore stop */
-            }
-            return n;
-        };
-        this.getRemainingTTL = key => {
-            const index = this.#keyMap.get(key);
-            if (index === undefined) {
-                return 0;
-            }
-            const ttl = ttls[index];
-            const start = starts[index];
-            if (!ttl || !start) {
-                return Infinity;
-            }
-            const age = (cachedNow || getNow()) - start;
-            return ttl - age;
-        };
-        this.#isStale = index => {
-            const s = starts[index];
-            const t = ttls[index];
-            return !!t && !!s && (cachedNow || getNow()) - s > t;
-        };
-    }
-    // conditionally set private methods related to TTL
-    #updateItemAge = () => { };
-    #statusTTL = () => { };
-    #setItemTTL = () => { };
-    /* c8 ignore stop */
-    #isStale = () => false;
-    #initializeSizeTracking() {
-        const sizes = new ZeroArray(this.#max);
-        this.#calculatedSize = 0;
-        this.#sizes = sizes;
-        this.#removeItemSize = index => {
-            this.#calculatedSize -= sizes[index];
-            sizes[index] = 0;
-        };
-        this.#requireSize = (k, v, size, sizeCalculation) => {
-            // provisionally accept background fetches.
-            // actual value size will be checked when they return.
-            if (this.#isBackgroundFetch(v)) {
-                return 0;
-            }
-            if (!isPosInt(size)) {
-                if (sizeCalculation) {
-                    if (typeof sizeCalculation !== 'function') {
-                        throw new TypeError('sizeCalculation must be a function');
-                    }
-                    size = sizeCalculation(v, k);
-                    if (!isPosInt(size)) {
-                        throw new TypeError('sizeCalculation return invalid (expect positive integer)');
-                    }
-                }
-                else {
-                    throw new TypeError('invalid size value (must be positive integer). ' +
-                        'When maxSize or maxEntrySize is used, sizeCalculation ' +
-                        'or size must be set.');
-                }
-            }
-            return size;
-        };
-        this.#addItemSize = (index, size, status) => {
-            sizes[index] = size;
-            if (this.#maxSize) {
-                const maxSize = this.#maxSize - sizes[index];
-                while (this.#calculatedSize > maxSize) {
-                    this.#evict(true);
-                }
-            }
-            this.#calculatedSize += sizes[index];
-            if (status) {
-                status.entrySize = size;
-                status.totalCalculatedSize = this.#calculatedSize;
-            }
-        };
-    }
-    #removeItemSize = _i => { };
-    #addItemSize = (_i, _s, _st) => { };
-    #requireSize = (_k, _v, size, sizeCalculation) => {
-        if (size || sizeCalculation) {
-            throw new TypeError('cannot set size without setting maxSize or maxEntrySize on cache');
-        }
-        return 0;
-    };
-    *#indexes({ allowStale = this.allowStale } = {}) {
-        if (this.#size) {
-            for (let i = this.#tail; true;) {
-                if (!this.#isValidIndex(i)) {
-                    break;
-                }
-                if (allowStale || !this.#isStale(i)) {
-                    yield i;
-                }
-                if (i === this.#head) {
-                    break;
-                }
-                else {
-                    i = this.#prev[i];
-                }
-            }
-        }
-    }
-    *#rindexes({ allowStale = this.allowStale } = {}) {
-        if (this.#size) {
-            for (let i = this.#head; true;) {
-                if (!this.#isValidIndex(i)) {
-                    break;
-                }
-                if (allowStale || !this.#isStale(i)) {
-                    yield i;
-                }
-                if (i === this.#tail) {
-                    break;
-                }
-                else {
-                    i = this.#next[i];
-                }
-            }
-        }
-    }
-    #isValidIndex(index) {
-        return (index !== undefined &&
-            this.#keyMap.get(this.#keyList[index]) === index);
-    }
-    /**
-     * Return a generator yielding `[key, value]` pairs,
-     * in order from most recently used to least recently used.
-     */
-    *entries() {
-        for (const i of this.#indexes()) {
-            if (this.#valList[i] !== undefined &&
-                this.#keyList[i] !== undefined &&
-                !this.#isBackgroundFetch(this.#valList[i])) {
-                yield [this.#keyList[i], this.#valList[i]];
-            }
-        }
-    }
-    /**
-     * Inverse order version of {@link LRUCache.entries}
-     *
-     * Return a generator yielding `[key, value]` pairs,
-     * in order from least recently used to most recently used.
-     */
-    *rentries() {
-        for (const i of this.#rindexes()) {
-            if (this.#valList[i] !== undefined &&
-                this.#keyList[i] !== undefined &&
-                !this.#isBackgroundFetch(this.#valList[i])) {
-                yield [this.#keyList[i], this.#valList[i]];
-            }
-        }
-    }
-    /**
-     * Return a generator yielding the keys in the cache,
-     * in order from most recently used to least recently used.
-     */
-    *keys() {
-        for (const i of this.#indexes()) {
-            const k = this.#keyList[i];
-            if (k !== undefined &&
-                !this.#isBackgroundFetch(this.#valList[i])) {
-                yield k;
-            }
-        }
-    }
-    /**
-     * Inverse order version of {@link LRUCache.keys}
-     *
-     * Return a generator yielding the keys in the cache,
-     * in order from least recently used to most recently used.
-     */
-    *rkeys() {
-        for (const i of this.#rindexes()) {
-            const k = this.#keyList[i];
-            if (k !== undefined &&
-                !this.#isBackgroundFetch(this.#valList[i])) {
-                yield k;
-            }
-        }
-    }
-    /**
-     * Return a generator yielding the values in the cache,
-     * in order from most recently used to least recently used.
-     */
-    *values() {
-        for (const i of this.#indexes()) {
-            const v = this.#valList[i];
-            if (v !== undefined &&
-                !this.#isBackgroundFetch(this.#valList[i])) {
-                yield this.#valList[i];
-            }
-        }
-    }
-    /**
-     * Inverse order version of {@link LRUCache.values}
-     *
-     * Return a generator yielding the values in the cache,
-     * in order from least recently used to most recently used.
-     */
-    *rvalues() {
-        for (const i of this.#rindexes()) {
-            const v = this.#valList[i];
-            if (v !== undefined &&
-                !this.#isBackgroundFetch(this.#valList[i])) {
-                yield this.#valList[i];
-            }
-        }
-    }
-    /**
-     * Iterating over the cache itself yields the same results as
-     * {@link LRUCache.entries}
-     */
-    [Symbol.iterator]() {
-        return this.entries();
-    }
-    /**
-     * A String value that is used in the creation of the default string
-     * description of an object. Called by the built-in method
-     * `Object.prototype.toString`.
-     */
-    [Symbol.toStringTag] = 'LRUCache';
-    /**
-     * Find a value for which the supplied fn method returns a truthy value,
-     * similar to `Array.find()`. fn is called as `fn(value, key, cache)`.
-     */
-    find(fn, getOptions = {}) {
-        for (const i of this.#indexes()) {
-            const v = this.#valList[i];
-            const value = this.#isBackgroundFetch(v)
-                ? v.__staleWhileFetching
-                : v;
-            if (value === undefined)
-                continue;
-            if (fn(value, this.#keyList[i], this)) {
-                return this.get(this.#keyList[i], getOptions);
-            }
-        }
-    }
-    /**
-     * Call the supplied function on each item in the cache, in order from most
-     * recently used to least recently used.
-     *
-     * `fn` is called as `fn(value, key, cache)`.
-     *
-     * If `thisp` is provided, function will be called in the `this`-context of
-     * the provided object, or the cache if no `thisp` object is provided.
-     *
-     * Does not update age or recenty of use, or iterate over stale values.
-     */
-    forEach(fn, thisp = this) {
-        for (const i of this.#indexes()) {
-            const v = this.#valList[i];
-            const value = this.#isBackgroundFetch(v)
-                ? v.__staleWhileFetching
-                : v;
-            if (value === undefined)
-                continue;
-            fn.call(thisp, value, this.#keyList[i], this);
-        }
-    }
-    /**
-     * The same as {@link LRUCache.forEach} but items are iterated over in
-     * reverse order.  (ie, less recently used items are iterated over first.)
-     */
-    rforEach(fn, thisp = this) {
-        for (const i of this.#rindexes()) {
-            const v = this.#valList[i];
-            const value = this.#isBackgroundFetch(v)
-                ? v.__staleWhileFetching
-                : v;
-            if (value === undefined)
-                continue;
-            fn.call(thisp, value, this.#keyList[i], this);
-        }
-    }
-    /**
-     * Delete any stale entries. Returns true if anything was removed,
-     * false otherwise.
-     */
-    purgeStale() {
-        let deleted = false;
-        for (const i of this.#rindexes({ allowStale: true })) {
-            if (this.#isStale(i)) {
-                this.#delete(this.#keyList[i], 'expire');
-                deleted = true;
-            }
-        }
-        return deleted;
-    }
-    /**
-     * Get the extended info about a given entry, to get its value, size, and
-     * TTL info simultaneously. Returns `undefined` if the key is not present.
-     *
-     * Unlike {@link LRUCache#dump}, which is designed to be portable and survive
-     * serialization, the `start` value is always the current timestamp, and the
-     * `ttl` is a calculated remaining time to live (negative if expired).
-     *
-     * Always returns stale values, if their info is found in the cache, so be
-     * sure to check for expirations (ie, a negative {@link LRUCache.Entry#ttl})
-     * if relevant.
-     */
-    info(key) {
-        const i = this.#keyMap.get(key);
-        if (i === undefined)
-            return undefined;
-        const v = this.#valList[i];
-        const value = this.#isBackgroundFetch(v)
-            ? v.__staleWhileFetching
-            : v;
-        if (value === undefined)
-            return undefined;
-        const entry = { value };
-        if (this.#ttls && this.#starts) {
-            const ttl = this.#ttls[i];
-            const start = this.#starts[i];
-            if (ttl && start) {
-                const remain = ttl - (perf.now() - start);
-                entry.ttl = remain;
-                entry.start = Date.now();
-            }
-        }
-        if (this.#sizes) {
-            entry.size = this.#sizes[i];
-        }
-        return entry;
-    }
-    /**
-     * Return an array of [key, {@link LRUCache.Entry}] tuples which can be
-     * passed to {@link LRLUCache#load}.
-     *
-     * The `start` fields are calculated relative to a portable `Date.now()`
-     * timestamp, even if `performance.now()` is available.
-     *
-     * Stale entries are always included in the `dump`, even if
-     * {@link LRUCache.OptionsBase.allowStale} is false.
-     *
-     * Note: this returns an actual array, not a generator, so it can be more
-     * easily passed around.
-     */
-    dump() {
-        const arr = [];
-        for (const i of this.#indexes({ allowStale: true })) {
-            const key = this.#keyList[i];
-            const v = this.#valList[i];
-            const value = this.#isBackgroundFetch(v)
-                ? v.__staleWhileFetching
-                : v;
-            if (value === undefined || key === undefined)
-                continue;
-            const entry = { value };
-            if (this.#ttls && this.#starts) {
-                entry.ttl = this.#ttls[i];
-                // always dump the start relative to a portable timestamp
-                // it's ok for this to be a bit slow, it's a rare operation.
-                const age = perf.now() - this.#starts[i];
-                entry.start = Math.floor(Date.now() - age);
-            }
-            if (this.#sizes) {
-                entry.size = this.#sizes[i];
-            }
-            arr.unshift([key, entry]);
-        }
-        return arr;
-    }
-    /**
-     * Reset the cache and load in the items in entries in the order listed.
-     *
-     * The shape of the resulting cache may be different if the same options are
-     * not used in both caches.
-     *
-     * The `start` fields are assumed to be calculated relative to a portable
-     * `Date.now()` timestamp, even if `performance.now()` is available.
-     */
-    load(arr) {
-        this.clear();
-        for (const [key, entry] of arr) {
-            if (entry.start) {
-                // entry.start is a portable timestamp, but we may be using
-                // node's performance.now(), so calculate the offset, so that
-                // we get the intended remaining TTL, no matter how long it's
-                // been on ice.
-                //
-                // it's ok for this to be a bit slow, it's a rare operation.
-                const age = Date.now() - entry.start;
-                entry.start = perf.now() - age;
-            }
-            this.set(key, entry.value, entry);
-        }
-    }
-    /**
-     * Add a value to the cache.
-     *
-     * Note: if `undefined` is specified as a value, this is an alias for
-     * {@link LRUCache#delete}
-     *
-     * Fields on the {@link LRUCache.SetOptions} options param will override
-     * their corresponding values in the constructor options for the scope
-     * of this single `set()` operation.
-     *
-     * If `start` is provided, then that will set the effective start
-     * time for the TTL calculation. Note that this must be a previous
-     * value of `performance.now()` if supported, or a previous value of
-     * `Date.now()` if not.
-     *
-     * Options object may also include `size`, which will prevent
-     * calling the `sizeCalculation` function and just use the specified
-     * number if it is a positive integer, and `noDisposeOnSet` which
-     * will prevent calling a `dispose` function in the case of
-     * overwrites.
-     *
-     * If the `size` (or return value of `sizeCalculation`) for a given
-     * entry is greater than `maxEntrySize`, then the item will not be
-     * added to the cache.
-     *
-     * Will update the recency of the entry.
-     *
-     * If the value is `undefined`, then this is an alias for
-     * `cache.delete(key)`. `undefined` is never stored in the cache.
-     */
-    set(k, v, setOptions = {}) {
-        if (v === undefined) {
-            this.delete(k);
-            return this;
-        }
-        const { ttl = this.ttl, start, noDisposeOnSet = this.noDisposeOnSet, sizeCalculation = this.sizeCalculation, status, } = setOptions;
-        let { noUpdateTTL = this.noUpdateTTL } = setOptions;
-        const size = this.#requireSize(k, v, setOptions.size || 0, sizeCalculation);
-        // if the item doesn't fit, don't do anything
-        // NB: maxEntrySize set to maxSize by default
-        if (this.maxEntrySize && size > this.maxEntrySize) {
-            if (status) {
-                status.set = 'miss';
-                status.maxEntrySizeExceeded = true;
-            }
-            // have to delete, in case something is there already.
-            this.#delete(k, 'set');
-            return this;
-        }
-        let index = this.#size === 0 ? undefined : this.#keyMap.get(k);
-        if (index === undefined) {
-            // addition
-            index = (this.#size === 0
-                ? this.#tail
-                : this.#free.length !== 0
-                    ? this.#free.pop()
-                    : this.#size === this.#max
-                        ? this.#evict(false)
-                        : this.#size);
-            this.#keyList[index] = k;
-            this.#valList[index] = v;
-            this.#keyMap.set(k, index);
-            this.#next[this.#tail] = index;
-            this.#prev[index] = this.#tail;
-            this.#tail = index;
-            this.#size++;
-            this.#addItemSize(index, size, status);
-            if (status)
-                status.set = 'add';
-            noUpdateTTL = false;
-        }
-        else {
-            // update
-            this.#moveToTail(index);
-            const oldVal = this.#valList[index];
-            if (v !== oldVal) {
-                if (this.#hasFetchMethod && this.#isBackgroundFetch(oldVal)) {
-                    oldVal.__abortController.abort(new Error('replaced'));
-                    const { __staleWhileFetching: s } = oldVal;
-                    if (s !== undefined && !noDisposeOnSet) {
-                        if (this.#hasDispose) {
-                            this.#dispose?.(s, k, 'set');
-                        }
-                        if (this.#hasDisposeAfter) {
-                            this.#disposed?.push([s, k, 'set']);
-                        }
-                    }
-                }
-                else if (!noDisposeOnSet) {
-                    if (this.#hasDispose) {
-                        this.#dispose?.(oldVal, k, 'set');
-                    }
-                    if (this.#hasDisposeAfter) {
-                        this.#disposed?.push([oldVal, k, 'set']);
-                    }
-                }
-                this.#removeItemSize(index);
-                this.#addItemSize(index, size, status);
-                this.#valList[index] = v;
-                if (status) {
-                    status.set = 'replace';
-                    const oldValue = oldVal && this.#isBackgroundFetch(oldVal)
-                        ? oldVal.__staleWhileFetching
-                        : oldVal;
-                    if (oldValue !== undefined)
-                        status.oldValue = oldValue;
-                }
-            }
-            else if (status) {
-                status.set = 'update';
-            }
-        }
-        if (ttl !== 0 && !this.#ttls) {
-            this.#initializeTTLTracking();
-        }
-        if (this.#ttls) {
-            if (!noUpdateTTL) {
-                this.#setItemTTL(index, ttl, start);
-            }
-            if (status)
-                this.#statusTTL(status, index);
-        }
-        if (!noDisposeOnSet && this.#hasDisposeAfter && this.#disposed) {
-            const dt = this.#disposed;
-            let task;
-            while ((task = dt?.shift())) {
-                this.#disposeAfter?.(...task);
-            }
-        }
-        return this;
-    }
-    /**
-     * Evict the least recently used item, returning its value or
-     * `undefined` if cache is empty.
-     */
-    pop() {
-        try {
-            while (this.#size) {
-                const val = this.#valList[this.#head];
-                this.#evict(true);
-                if (this.#isBackgroundFetch(val)) {
-                    if (val.__staleWhileFetching) {
-                        return val.__staleWhileFetching;
-                    }
-                }
-                else if (val !== undefined) {
-                    return val;
-                }
-            }
-        }
-        finally {
-            if (this.#hasDisposeAfter && this.#disposed) {
-                const dt = this.#disposed;
-                let task;
-                while ((task = dt?.shift())) {
-                    this.#disposeAfter?.(...task);
-                }
-            }
-        }
-    }
-    #evict(free) {
-        const head = this.#head;
-        const k = this.#keyList[head];
-        const v = this.#valList[head];
-        if (this.#hasFetchMethod && this.#isBackgroundFetch(v)) {
-            v.__abortController.abort(new Error('evicted'));
-        }
-        else if (this.#hasDispose || this.#hasDisposeAfter) {
-            if (this.#hasDispose) {
-                this.#dispose?.(v, k, 'evict');
-            }
-            if (this.#hasDisposeAfter) {
-                this.#disposed?.push([v, k, 'evict']);
-            }
-        }
-        this.#removeItemSize(head);
-        // if we aren't about to use the index, then null these out
-        if (free) {
-            this.#keyList[head] = undefined;
-            this.#valList[head] = undefined;
-            this.#free.push(head);
-        }
-        if (this.#size === 1) {
-            this.#head = this.#tail = 0;
-            this.#free.length = 0;
-        }
-        else {
-            this.#head = this.#next[head];
-        }
-        this.#keyMap.delete(k);
-        this.#size--;
-        return head;
-    }
-    /**
-     * Check if a key is in the cache, without updating the recency of use.
-     * Will return false if the item is stale, even though it is technically
-     * in the cache.
-     *
-     * Check if a key is in the cache, without updating the recency of
-     * use. Age is updated if {@link LRUCache.OptionsBase.updateAgeOnHas} is set
-     * to `true` in either the options or the constructor.
-     *
-     * Will return `false` if the item is stale, even though it is technically in
-     * the cache. The difference can be determined (if it matters) by using a
-     * `status` argument, and inspecting the `has` field.
-     *
-     * Will not update item age unless
-     * {@link LRUCache.OptionsBase.updateAgeOnHas} is set.
-     */
-    has(k, hasOptions = {}) {
-        const { updateAgeOnHas = this.updateAgeOnHas, status } = hasOptions;
-        const index = this.#keyMap.get(k);
-        if (index !== undefined) {
-            const v = this.#valList[index];
-            if (this.#isBackgroundFetch(v) &&
-                v.__staleWhileFetching === undefined) {
-                return false;
-            }
-            if (!this.#isStale(index)) {
-                if (updateAgeOnHas) {
-                    this.#updateItemAge(index);
-                }
-                if (status) {
-                    status.has = 'hit';
-                    this.#statusTTL(status, index);
-                }
-                return true;
-            }
-            else if (status) {
-                status.has = 'stale';
-                this.#statusTTL(status, index);
-            }
-        }
-        else if (status) {
-            status.has = 'miss';
-        }
-        return false;
-    }
-    /**
-     * Like {@link LRUCache#get} but doesn't update recency or delete stale
-     * items.
-     *
-     * Returns `undefined` if the item is stale, unless
-     * {@link LRUCache.OptionsBase.allowStale} is set.
-     */
-    peek(k, peekOptions = {}) {
-        const { allowStale = this.allowStale } = peekOptions;
-        const index = this.#keyMap.get(k);
-        if (index === undefined ||
-            (!allowStale && this.#isStale(index))) {
-            return;
-        }
-        const v = this.#valList[index];
-        // either stale and allowed, or forcing a refresh of non-stale value
-        return this.#isBackgroundFetch(v) ? v.__staleWhileFetching : v;
-    }
-    #backgroundFetch(k, index, options, context) {
-        const v = index === undefined ? undefined : this.#valList[index];
-        if (this.#isBackgroundFetch(v)) {
-            return v;
-        }
-        const ac = new AC();
-        const { signal } = options;
-        // when/if our AC signals, then stop listening to theirs.
-        signal?.addEventListener('abort', () => ac.abort(signal.reason), {
-            signal: ac.signal,
-        });
-        const fetchOpts = {
-            signal: ac.signal,
-            options,
-            context,
-        };
-        const cb = (v, updateCache = false) => {
-            const { aborted } = ac.signal;
-            const ignoreAbort = options.ignoreFetchAbort && v !== undefined;
-            if (options.status) {
-                if (aborted && !updateCache) {
-                    options.status.fetchAborted = true;
-                    options.status.fetchError = ac.signal.reason;
-                    if (ignoreAbort)
-                        options.status.fetchAbortIgnored = true;
-                }
-                else {
-                    options.status.fetchResolved = true;
-                }
-            }
-            if (aborted && !ignoreAbort && !updateCache) {
-                return fetchFail(ac.signal.reason);
-            }
-            // either we didn't abort, and are still here, or we did, and ignored
-            const bf = p;
-            if (this.#valList[index] === p) {
-                if (v === undefined) {
-                    if (bf.__staleWhileFetching) {
-                        this.#valList[index] = bf.__staleWhileFetching;
-                    }
-                    else {
-                        this.#delete(k, 'fetch');
-                    }
-                }
-                else {
-                    if (options.status)
-                        options.status.fetchUpdated = true;
-                    this.set(k, v, fetchOpts.options);
-                }
-            }
-            return v;
-        };
-        const eb = (er) => {
-            if (options.status) {
-                options.status.fetchRejected = true;
-                options.status.fetchError = er;
-            }
-            return fetchFail(er);
-        };
-        const fetchFail = (er) => {
-            const { aborted } = ac.signal;
-            const allowStaleAborted = aborted && options.allowStaleOnFetchAbort;
-            const allowStale = allowStaleAborted || options.allowStaleOnFetchRejection;
-            const noDelete = allowStale || options.noDeleteOnFetchRejection;
-            const bf = p;
-            if (this.#valList[index] === p) {
-                // if we allow stale on fetch rejections, then we need to ensure that
-                // the stale value is not removed from the cache when the fetch fails.
-                const del = !noDelete || bf.__staleWhileFetching === undefined;
-                if (del) {
-                    this.#delete(k, 'fetch');
-                }
-                else if (!allowStaleAborted) {
-                    // still replace the *promise* with the stale value,
-                    // since we are done with the promise at this point.
-                    // leave it untouched if we're still waiting for an
-                    // aborted background fetch that hasn't yet returned.
-                    this.#valList[index] = bf.__staleWhileFetching;
-                }
-            }
-            if (allowStale) {
-                if (options.status && bf.__staleWhileFetching !== undefined) {
-                    options.status.returnedStale = true;
-                }
-                return bf.__staleWhileFetching;
-            }
-            else if (bf.__returned === bf) {
-                throw er;
-            }
-        };
-        const pcall = (res, rej) => {
-            const fmp = this.#fetchMethod?.(k, v, fetchOpts);
-            if (fmp && fmp instanceof Promise) {
-                fmp.then(v => res(v === undefined ? undefined : v), rej);
-            }
-            // ignored, we go until we finish, regardless.
-            // defer check until we are actually aborting,
-            // so fetchMethod can override.
-            ac.signal.addEventListener('abort', () => {
-                if (!options.ignoreFetchAbort ||
-                    options.allowStaleOnFetchAbort) {
-                    res(undefined);
-                    // when it eventually resolves, update the cache.
-                    if (options.allowStaleOnFetchAbort) {
-                        res = v => cb(v, true);
-                    }
-                }
-            });
-        };
-        if (options.status)
-            options.status.fetchDispatched = true;
-        const p = new Promise(pcall).then(cb, eb);
-        const bf = Object.assign(p, {
-            __abortController: ac,
-            __staleWhileFetching: v,
-            __returned: undefined,
-        });
-        if (index === undefined) {
-            // internal, don't expose status.
-            this.set(k, bf, { ...fetchOpts.options, status: undefined });
-            index = this.#keyMap.get(k);
-        }
-        else {
-            this.#valList[index] = bf;
-        }
-        return bf;
-    }
-    #isBackgroundFetch(p) {
-        if (!this.#hasFetchMethod)
-            return false;
-        const b = p;
-        return (!!b &&
-            b instanceof Promise &&
-            b.hasOwnProperty('__staleWhileFetching') &&
-            b.__abortController instanceof AC);
-    }
-    async fetch(k, fetchOptions = {}) {
-        const { 
-        // get options
-        allowStale = this.allowStale, updateAgeOnGet = this.updateAgeOnGet, noDeleteOnStaleGet = this.noDeleteOnStaleGet, 
-        // set options
-        ttl = this.ttl, noDisposeOnSet = this.noDisposeOnSet, size = 0, sizeCalculation = this.sizeCalculation, noUpdateTTL = this.noUpdateTTL, 
-        // fetch exclusive options
-        noDeleteOnFetchRejection = this.noDeleteOnFetchRejection, allowStaleOnFetchRejection = this.allowStaleOnFetchRejection, ignoreFetchAbort = this.ignoreFetchAbort, allowStaleOnFetchAbort = this.allowStaleOnFetchAbort, context, forceRefresh = false, status, signal, } = fetchOptions;
-        if (!this.#hasFetchMethod) {
-            if (status)
-                status.fetch = 'get';
-            return this.get(k, {
-                allowStale,
-                updateAgeOnGet,
-                noDeleteOnStaleGet,
-                status,
-            });
-        }
-        const options = {
-            allowStale,
-            updateAgeOnGet,
-            noDeleteOnStaleGet,
-            ttl,
-            noDisposeOnSet,
-            size,
-            sizeCalculation,
-            noUpdateTTL,
-            noDeleteOnFetchRejection,
-            allowStaleOnFetchRejection,
-            allowStaleOnFetchAbort,
-            ignoreFetchAbort,
-            status,
-            signal,
-        };
-        let index = this.#keyMap.get(k);
-        if (index === undefined) {
-            if (status)
-                status.fetch = 'miss';
-            const p = this.#backgroundFetch(k, index, options, context);
-            return (p.__returned = p);
-        }
-        else {
-            // in cache, maybe already fetching
-            const v = this.#valList[index];
-            if (this.#isBackgroundFetch(v)) {
-                const stale = allowStale && v.__staleWhileFetching !== undefined;
-                if (status) {
-                    status.fetch = 'inflight';
-                    if (stale)
-                        status.returnedStale = true;
-                }
-                return stale ? v.__staleWhileFetching : (v.__returned = v);
-            }
-            // if we force a refresh, that means do NOT serve the cached value,
-            // unless we are already in the process of refreshing the cache.
-            const isStale = this.#isStale(index);
-            if (!forceRefresh && !isStale) {
-                if (status)
-                    status.fetch = 'hit';
-                this.#moveToTail(index);
-                if (updateAgeOnGet) {
-                    this.#updateItemAge(index);
-                }
-                if (status)
-                    this.#statusTTL(status, index);
-                return v;
-            }
-            // ok, it is stale or a forced refresh, and not already fetching.
-            // refresh the cache.
-            const p = this.#backgroundFetch(k, index, options, context);
-            const hasStale = p.__staleWhileFetching !== undefined;
-            const staleVal = hasStale && allowStale;
-            if (status) {
-                status.fetch = isStale ? 'stale' : 'refresh';
-                if (staleVal && isStale)
-                    status.returnedStale = true;
-            }
-            return staleVal ? p.__staleWhileFetching : (p.__returned = p);
-        }
-    }
-    async forceFetch(k, fetchOptions = {}) {
-        const v = await this.fetch(k, fetchOptions);
-        if (v === undefined)
-            throw new Error('fetch() returned undefined');
-        return v;
-    }
-    memo(k, memoOptions = {}) {
-        const memoMethod = this.#memoMethod;
-        if (!memoMethod) {
-            throw new Error('no memoMethod provided to constructor');
-        }
-        const { context, forceRefresh, ...options } = memoOptions;
-        const v = this.get(k, options);
-        if (!forceRefresh && v !== undefined)
-            return v;
-        const vv = memoMethod(k, v, {
-            options,
-            context,
-        });
-        this.set(k, vv, options);
-        return vv;
-    }
-    /**
-     * Return a value from the cache. Will update the recency of the cache
-     * entry found.
-     *
-     * If the key is not found, get() will return `undefined`.
-     */
-    get(k, getOptions = {}) {
-        const { allowStale = this.allowStale, updateAgeOnGet = this.updateAgeOnGet, noDeleteOnStaleGet = this.noDeleteOnStaleGet, status, } = getOptions;
-        const index = this.#keyMap.get(k);
-        if (index !== undefined) {
-            const value = this.#valList[index];
-            const fetching = this.#isBackgroundFetch(value);
-            if (status)
-                this.#statusTTL(status, index);
-            if (this.#isStale(index)) {
-                if (status)
-                    status.get = 'stale';
-                // delete only if not an in-flight background fetch
-                if (!fetching) {
-                    if (!noDeleteOnStaleGet) {
-                        this.#delete(k, 'expire');
-                    }
-                    if (status && allowStale)
-                        status.returnedStale = true;
-                    return allowStale ? value : undefined;
-                }
-                else {
-                    if (status &&
-                        allowStale &&
-                        value.__staleWhileFetching !== undefined) {
-                        status.returnedStale = true;
-                    }
-                    return allowStale ? value.__staleWhileFetching : undefined;
-                }
-            }
-            else {
-                if (status)
-                    status.get = 'hit';
-                // if we're currently fetching it, we don't actually have it yet
-                // it's not stale, which means this isn't a staleWhileRefetching.
-                // If it's not stale, and fetching, AND has a __staleWhileFetching
-                // value, then that means the user fetched with {forceRefresh:true},
-                // so it's safe to return that value.
-                if (fetching) {
-                    return value.__staleWhileFetching;
-                }
-                this.#moveToTail(index);
-                if (updateAgeOnGet) {
-                    this.#updateItemAge(index);
-                }
-                return value;
-            }
-        }
-        else if (status) {
-            status.get = 'miss';
-        }
-    }
-    #connect(p, n) {
-        this.#prev[n] = p;
-        this.#next[p] = n;
-    }
-    #moveToTail(index) {
-        // if tail already, nothing to do
-        // if head, move head to next[index]
-        // else
-        //   move next[prev[index]] to next[index] (head has no prev)
-        //   move prev[next[index]] to prev[index]
-        // prev[index] = tail
-        // next[tail] = index
-        // tail = index
-        if (index !== this.#tail) {
-            if (index === this.#head) {
-                this.#head = this.#next[index];
-            }
-            else {
-                this.#connect(this.#prev[index], this.#next[index]);
-            }
-            this.#connect(this.#tail, index);
-            this.#tail = index;
-        }
-    }
-    /**
-     * Deletes a key out of the cache.
-     *
-     * Returns true if the key was deleted, false otherwise.
-     */
-    delete(k) {
-        return this.#delete(k, 'delete');
-    }
-    #delete(k, reason) {
-        let deleted = false;
-        if (this.#size !== 0) {
-            const index = this.#keyMap.get(k);
-            if (index !== undefined) {
-                deleted = true;
-                if (this.#size === 1) {
-                    this.#clear(reason);
-                }
-                else {
-                    this.#removeItemSize(index);
-                    const v = this.#valList[index];
-                    if (this.#isBackgroundFetch(v)) {
-                        v.__abortController.abort(new Error('deleted'));
-                    }
-                    else if (this.#hasDispose || this.#hasDisposeAfter) {
-                        if (this.#hasDispose) {
-                            this.#dispose?.(v, k, reason);
-                        }
-                        if (this.#hasDisposeAfter) {
-                            this.#disposed?.push([v, k, reason]);
-                        }
-                    }
-                    this.#keyMap.delete(k);
-                    this.#keyList[index] = undefined;
-                    this.#valList[index] = undefined;
-                    if (index === this.#tail) {
-                        this.#tail = this.#prev[index];
-                    }
-                    else if (index === this.#head) {
-                        this.#head = this.#next[index];
-                    }
-                    else {
-                        const pi = this.#prev[index];
-                        this.#next[pi] = this.#next[index];
-                        const ni = this.#next[index];
-                        this.#prev[ni] = this.#prev[index];
-                    }
-                    this.#size--;
-                    this.#free.push(index);
-                }
-            }
-        }
-        if (this.#hasDisposeAfter && this.#disposed?.length) {
-            const dt = this.#disposed;
-            let task;
-            while ((task = dt?.shift())) {
-                this.#disposeAfter?.(...task);
-            }
-        }
-        return deleted;
-    }
-    /**
-     * Clear the cache entirely, throwing away all values.
-     */
-    clear() {
-        return this.#clear('delete');
-    }
-    #clear(reason) {
-        for (const index of this.#rindexes({ allowStale: true })) {
-            const v = this.#valList[index];
-            if (this.#isBackgroundFetch(v)) {
-                v.__abortController.abort(new Error('deleted'));
-            }
-            else {
-                const k = this.#keyList[index];
-                if (this.#hasDispose) {
-                    this.#dispose?.(v, k, reason);
-                }
-                if (this.#hasDisposeAfter) {
-                    this.#disposed?.push([v, k, reason]);
-                }
-            }
-        }
-        this.#keyMap.clear();
-        this.#valList.fill(undefined);
-        this.#keyList.fill(undefined);
-        if (this.#ttls && this.#starts) {
-            this.#ttls.fill(0);
-            this.#starts.fill(0);
-        }
-        if (this.#sizes) {
-            this.#sizes.fill(0);
-        }
-        this.#head = 0;
-        this.#tail = 0;
-        this.#free.length = 0;
-        this.#calculatedSize = 0;
-        this.#size = 0;
-        if (this.#hasDisposeAfter && this.#disposed) {
-            const dt = this.#disposed;
-            let task;
-            while ((task = dt?.shift())) {
-                this.#disposeAfter?.(...task);
-            }
-        }
-    }
-}
-exports.LRUCache = LRUCache;
-//# sourceMappingURL=index.js.map
-
-/***/ }),
-
-/***/ 3783:
+/***/ 7575:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -54924,7 +52576,7 @@ exports.assertValidPattern = assertValidPattern;
 
 /***/ }),
 
-/***/ 8529:
+/***/ 3233:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -54932,8 +52584,8 @@ exports.assertValidPattern = assertValidPattern;
 // parse a single path portion
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AST = void 0;
-const brace_expressions_js_1 = __nccwpck_require__(5600);
-const unescape_js_1 = __nccwpck_require__(7437);
+const brace_expressions_js_1 = __nccwpck_require__(384);
+const unescape_js_1 = __nccwpck_require__(3597);
 const types = new Set(['!', '?', '+', '*', '@']);
 const isExtglobType = (c) => types.has(c);
 // Patterns that get prepended to bind to the start of either the
@@ -55523,7 +53175,7 @@ exports.AST = AST;
 
 /***/ }),
 
-/***/ 5600:
+/***/ 384:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -55682,7 +53334,7 @@ exports.parseClass = parseClass;
 
 /***/ }),
 
-/***/ 382:
+/***/ 7662:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -55711,7 +53363,7 @@ exports.escape = escape;
 
 /***/ }),
 
-/***/ 2329:
+/***/ 5257:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -55722,10 +53374,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.unescape = exports.escape = exports.AST = exports.Minimatch = exports.match = exports.makeRe = exports.braceExpand = exports.defaults = exports.filter = exports.GLOBSTAR = exports.sep = exports.minimatch = void 0;
 const brace_expansion_1 = __importDefault(__nccwpck_require__(4691));
-const assert_valid_pattern_js_1 = __nccwpck_require__(3783);
-const ast_js_1 = __nccwpck_require__(8529);
-const escape_js_1 = __nccwpck_require__(382);
-const unescape_js_1 = __nccwpck_require__(7437);
+const assert_valid_pattern_js_1 = __nccwpck_require__(7575);
+const ast_js_1 = __nccwpck_require__(3233);
+const escape_js_1 = __nccwpck_require__(7662);
+const unescape_js_1 = __nccwpck_require__(3597);
 const minimatch = (p, pattern, options = {}) => {
     (0, assert_valid_pattern_js_1.assertValidPattern)(pattern);
     // shortcut: comments match nothing.
@@ -56720,11 +54372,11 @@ class Minimatch {
 }
 exports.Minimatch = Minimatch;
 /* c8 ignore start */
-var ast_js_2 = __nccwpck_require__(8529);
+var ast_js_2 = __nccwpck_require__(3233);
 Object.defineProperty(exports, "AST", ({ enumerable: true, get: function () { return ast_js_2.AST; } }));
-var escape_js_2 = __nccwpck_require__(382);
+var escape_js_2 = __nccwpck_require__(7662);
 Object.defineProperty(exports, "escape", ({ enumerable: true, get: function () { return escape_js_2.escape; } }));
-var unescape_js_2 = __nccwpck_require__(7437);
+var unescape_js_2 = __nccwpck_require__(3597);
 Object.defineProperty(exports, "unescape", ({ enumerable: true, get: function () { return unescape_js_2.unescape; } }));
 /* c8 ignore stop */
 exports.minimatch.AST = ast_js_1.AST;
@@ -56735,7 +54387,7 @@ exports.minimatch.unescape = unescape_js_1.unescape;
 
 /***/ }),
 
-/***/ 7437:
+/***/ 3597:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -56766,7 +54418,1837 @@ exports.unescape = unescape;
 
 /***/ }),
 
-/***/ 1191:
+/***/ 4352:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const { normalizeIPv6, normalizeIPv4, removeDotSegments, recomposeAuthority, normalizeComponentEncoding } = __nccwpck_require__(5077)
+const SCHEMES = __nccwpck_require__(5300)
+
+function normalize (uri, options) {
+  if (typeof uri === 'string') {
+    uri = serialize(parse(uri, options), options)
+  } else if (typeof uri === 'object') {
+    uri = parse(serialize(uri, options), options)
+  }
+  return uri
+}
+
+function resolve (baseURI, relativeURI, options) {
+  const schemelessOptions = Object.assign({ scheme: 'null' }, options)
+  const resolved = resolveComponents(parse(baseURI, schemelessOptions), parse(relativeURI, schemelessOptions), schemelessOptions, true)
+  return serialize(resolved, { ...schemelessOptions, skipEscape: true })
+}
+
+function resolveComponents (base, relative, options, skipNormalization) {
+  const target = {}
+  if (!skipNormalization) {
+    base = parse(serialize(base, options), options) // normalize base components
+    relative = parse(serialize(relative, options), options) // normalize relative components
+  }
+  options = options || {}
+
+  if (!options.tolerant && relative.scheme) {
+    target.scheme = relative.scheme
+    // target.authority = relative.authority;
+    target.userinfo = relative.userinfo
+    target.host = relative.host
+    target.port = relative.port
+    target.path = removeDotSegments(relative.path || '')
+    target.query = relative.query
+  } else {
+    if (relative.userinfo !== undefined || relative.host !== undefined || relative.port !== undefined) {
+      // target.authority = relative.authority;
+      target.userinfo = relative.userinfo
+      target.host = relative.host
+      target.port = relative.port
+      target.path = removeDotSegments(relative.path || '')
+      target.query = relative.query
+    } else {
+      if (!relative.path) {
+        target.path = base.path
+        if (relative.query !== undefined) {
+          target.query = relative.query
+        } else {
+          target.query = base.query
+        }
+      } else {
+        if (relative.path.charAt(0) === '/') {
+          target.path = removeDotSegments(relative.path)
+        } else {
+          if ((base.userinfo !== undefined || base.host !== undefined || base.port !== undefined) && !base.path) {
+            target.path = '/' + relative.path
+          } else if (!base.path) {
+            target.path = relative.path
+          } else {
+            target.path = base.path.slice(0, base.path.lastIndexOf('/') + 1) + relative.path
+          }
+          target.path = removeDotSegments(target.path)
+        }
+        target.query = relative.query
+      }
+      // target.authority = base.authority;
+      target.userinfo = base.userinfo
+      target.host = base.host
+      target.port = base.port
+    }
+    target.scheme = base.scheme
+  }
+
+  target.fragment = relative.fragment
+
+  return target
+}
+
+function equal (uriA, uriB, options) {
+  if (typeof uriA === 'string') {
+    uriA = unescape(uriA)
+    uriA = serialize(normalizeComponentEncoding(parse(uriA, options), true), { ...options, skipEscape: true })
+  } else if (typeof uriA === 'object') {
+    uriA = serialize(normalizeComponentEncoding(uriA, true), { ...options, skipEscape: true })
+  }
+
+  if (typeof uriB === 'string') {
+    uriB = unescape(uriB)
+    uriB = serialize(normalizeComponentEncoding(parse(uriB, options), true), { ...options, skipEscape: true })
+  } else if (typeof uriB === 'object') {
+    uriB = serialize(normalizeComponentEncoding(uriB, true), { ...options, skipEscape: true })
+  }
+
+  return uriA.toLowerCase() === uriB.toLowerCase()
+}
+
+function serialize (cmpts, opts) {
+  const components = {
+    host: cmpts.host,
+    scheme: cmpts.scheme,
+    userinfo: cmpts.userinfo,
+    port: cmpts.port,
+    path: cmpts.path,
+    query: cmpts.query,
+    nid: cmpts.nid,
+    nss: cmpts.nss,
+    uuid: cmpts.uuid,
+    fragment: cmpts.fragment,
+    reference: cmpts.reference,
+    resourceName: cmpts.resourceName,
+    secure: cmpts.secure,
+    error: ''
+  }
+  const options = Object.assign({}, opts)
+  const uriTokens = []
+
+  // find scheme handler
+  const schemeHandler = SCHEMES[(options.scheme || components.scheme || '').toLowerCase()]
+
+  // perform scheme specific serialization
+  if (schemeHandler && schemeHandler.serialize) schemeHandler.serialize(components, options)
+
+  if (components.path !== undefined) {
+    if (!options.skipEscape) {
+      components.path = escape(components.path)
+
+      if (components.scheme !== undefined) {
+        components.path = components.path.split('%3A').join(':')
+      }
+    } else {
+      components.path = unescape(components.path)
+    }
+  }
+
+  if (options.reference !== 'suffix' && components.scheme) {
+    uriTokens.push(components.scheme, ':')
+  }
+
+  const authority = recomposeAuthority(components, options)
+  if (authority !== undefined) {
+    if (options.reference !== 'suffix') {
+      uriTokens.push('//')
+    }
+
+    uriTokens.push(authority)
+
+    if (components.path && components.path.charAt(0) !== '/') {
+      uriTokens.push('/')
+    }
+  }
+  if (components.path !== undefined) {
+    let s = components.path
+
+    if (!options.absolutePath && (!schemeHandler || !schemeHandler.absolutePath)) {
+      s = removeDotSegments(s)
+    }
+
+    if (authority === undefined) {
+      s = s.replace(/^\/\//u, '/%2F') // don't allow the path to start with "//"
+    }
+
+    uriTokens.push(s)
+  }
+
+  if (components.query !== undefined) {
+    uriTokens.push('?', components.query)
+  }
+
+  if (components.fragment !== undefined) {
+    uriTokens.push('#', components.fragment)
+  }
+  return uriTokens.join('')
+}
+
+const hexLookUp = Array.from({ length: 127 }, (v, k) => /[^!"$&'()*+,\-.;=_`a-z{}~]/u.test(String.fromCharCode(k)))
+
+function nonSimpleDomain (value) {
+  let code = 0
+  for (let i = 0, len = value.length; i < len; ++i) {
+    code = value.charCodeAt(i)
+    if (code > 126 || hexLookUp[code]) {
+      return true
+    }
+  }
+  return false
+}
+
+const URI_PARSE = /^(?:([^#/:?]+):)?(?:\/\/((?:([^#/?@]*)@)?(\[[^#/?\]]+\]|[^#/:?]*)(?::(\d*))?))?([^#?]*)(?:\?([^#]*))?(?:#((?:.|[\n\r])*))?/u
+
+function parse (uri, opts) {
+  const options = Object.assign({}, opts)
+  const parsed = {
+    scheme: undefined,
+    userinfo: undefined,
+    host: '',
+    port: undefined,
+    path: '',
+    query: undefined,
+    fragment: undefined
+  }
+  const gotEncoding = uri.indexOf('%') !== -1
+  let isIP = false
+  if (options.reference === 'suffix') uri = (options.scheme ? options.scheme + ':' : '') + '//' + uri
+
+  const matches = uri.match(URI_PARSE)
+
+  if (matches) {
+    // store each component
+    parsed.scheme = matches[1]
+    parsed.userinfo = matches[3]
+    parsed.host = matches[4]
+    parsed.port = parseInt(matches[5], 10)
+    parsed.path = matches[6] || ''
+    parsed.query = matches[7]
+    parsed.fragment = matches[8]
+
+    // fix port number
+    if (isNaN(parsed.port)) {
+      parsed.port = matches[5]
+    }
+    if (parsed.host) {
+      const ipv4result = normalizeIPv4(parsed.host)
+      if (ipv4result.isIPV4 === false) {
+        const ipv6result = normalizeIPv6(ipv4result.host, { isIPV4: false })
+        parsed.host = ipv6result.host.toLowerCase()
+        isIP = ipv6result.isIPV6
+      } else {
+        parsed.host = ipv4result.host
+        isIP = true
+      }
+    }
+    if (parsed.scheme === undefined && parsed.userinfo === undefined && parsed.host === undefined && parsed.port === undefined && !parsed.path && parsed.query === undefined) {
+      parsed.reference = 'same-document'
+    } else if (parsed.scheme === undefined) {
+      parsed.reference = 'relative'
+    } else if (parsed.fragment === undefined) {
+      parsed.reference = 'absolute'
+    } else {
+      parsed.reference = 'uri'
+    }
+
+    // check for reference errors
+    if (options.reference && options.reference !== 'suffix' && options.reference !== parsed.reference) {
+      parsed.error = parsed.error || 'URI is not a ' + options.reference + ' reference.'
+    }
+
+    // find scheme handler
+    const schemeHandler = SCHEMES[(options.scheme || parsed.scheme || '').toLowerCase()]
+
+    // check if scheme can't handle IRIs
+    if (!options.unicodeSupport && (!schemeHandler || !schemeHandler.unicodeSupport)) {
+      // if host component is a domain name
+      if (parsed.host && (options.domainHost || (schemeHandler && schemeHandler.domainHost)) && isIP === false && nonSimpleDomain(parsed.host)) {
+        // convert Unicode IDN -> ASCII IDN
+        try {
+          parsed.host = URL.domainToASCII(parsed.host.toLowerCase())
+        } catch (e) {
+          parsed.error = parsed.error || "Host's domain name can not be converted to ASCII: " + e
+        }
+      }
+      // convert IRI -> URI
+    }
+
+    if (!schemeHandler || (schemeHandler && !schemeHandler.skipNormalize)) {
+      if (gotEncoding && parsed.scheme !== undefined) {
+        parsed.scheme = unescape(parsed.scheme)
+      }
+      if (gotEncoding && parsed.host !== undefined) {
+        parsed.host = unescape(parsed.host)
+      }
+      if (parsed.path !== undefined && parsed.path.length) {
+        parsed.path = escape(unescape(parsed.path))
+      }
+      if (parsed.fragment !== undefined && parsed.fragment.length) {
+        parsed.fragment = encodeURI(decodeURIComponent(parsed.fragment))
+      }
+    }
+
+    // perform scheme specific parsing
+    if (schemeHandler && schemeHandler.parse) {
+      schemeHandler.parse(parsed, options)
+    }
+  } else {
+    parsed.error = parsed.error || 'URI can not be parsed.'
+  }
+  return parsed
+}
+
+const fastUri = {
+  SCHEMES,
+  normalize,
+  resolve,
+  resolveComponents,
+  equal,
+  serialize,
+  parse
+}
+
+module.exports = fastUri
+module.exports["default"] = fastUri
+module.exports.fastUri = fastUri
+
+
+/***/ }),
+
+/***/ 5300:
+/***/ ((module) => {
+
+"use strict";
+
+
+const UUID_REG = /^[\da-f]{8}\b-[\da-f]{4}\b-[\da-f]{4}\b-[\da-f]{4}\b-[\da-f]{12}$/iu
+const URN_REG = /([\da-z][\d\-a-z]{0,31}):((?:[\w!$'()*+,\-.:;=@]|%[\da-f]{2})+)/iu
+
+function isSecure (wsComponents) {
+  return typeof wsComponents.secure === 'boolean' ? wsComponents.secure : String(wsComponents.scheme).toLowerCase() === 'wss'
+}
+
+function httpParse (components) {
+  if (!components.host) {
+    components.error = components.error || 'HTTP URIs must have a host.'
+  }
+
+  return components
+}
+
+function httpSerialize (components) {
+  const secure = String(components.scheme).toLowerCase() === 'https'
+
+  // normalize the default port
+  if (components.port === (secure ? 443 : 80) || components.port === '') {
+    components.port = undefined
+  }
+
+  // normalize the empty path
+  if (!components.path) {
+    components.path = '/'
+  }
+
+  // NOTE: We do not parse query strings for HTTP URIs
+  // as WWW Form Url Encoded query strings are part of the HTML4+ spec,
+  // and not the HTTP spec.
+
+  return components
+}
+
+function wsParse (wsComponents) {
+// indicate if the secure flag is set
+  wsComponents.secure = isSecure(wsComponents)
+
+  // construct resouce name
+  wsComponents.resourceName = (wsComponents.path || '/') + (wsComponents.query ? '?' + wsComponents.query : '')
+  wsComponents.path = undefined
+  wsComponents.query = undefined
+
+  return wsComponents
+}
+
+function wsSerialize (wsComponents) {
+// normalize the default port
+  if (wsComponents.port === (isSecure(wsComponents) ? 443 : 80) || wsComponents.port === '') {
+    wsComponents.port = undefined
+  }
+
+  // ensure scheme matches secure flag
+  if (typeof wsComponents.secure === 'boolean') {
+    wsComponents.scheme = (wsComponents.secure ? 'wss' : 'ws')
+    wsComponents.secure = undefined
+  }
+
+  // reconstruct path from resource name
+  if (wsComponents.resourceName) {
+    const [path, query] = wsComponents.resourceName.split('?')
+    wsComponents.path = (path && path !== '/' ? path : undefined)
+    wsComponents.query = query
+    wsComponents.resourceName = undefined
+  }
+
+  // forbid fragment component
+  wsComponents.fragment = undefined
+
+  return wsComponents
+}
+
+function urnParse (urnComponents, options) {
+  if (!urnComponents.path) {
+    urnComponents.error = 'URN can not be parsed'
+    return urnComponents
+  }
+  const matches = urnComponents.path.match(URN_REG)
+  if (matches) {
+    const scheme = options.scheme || urnComponents.scheme || 'urn'
+    urnComponents.nid = matches[1].toLowerCase()
+    urnComponents.nss = matches[2]
+    const urnScheme = `${scheme}:${options.nid || urnComponents.nid}`
+    const schemeHandler = SCHEMES[urnScheme]
+    urnComponents.path = undefined
+
+    if (schemeHandler) {
+      urnComponents = schemeHandler.parse(urnComponents, options)
+    }
+  } else {
+    urnComponents.error = urnComponents.error || 'URN can not be parsed.'
+  }
+
+  return urnComponents
+}
+
+function urnSerialize (urnComponents, options) {
+  const scheme = options.scheme || urnComponents.scheme || 'urn'
+  const nid = urnComponents.nid.toLowerCase()
+  const urnScheme = `${scheme}:${options.nid || nid}`
+  const schemeHandler = SCHEMES[urnScheme]
+
+  if (schemeHandler) {
+    urnComponents = schemeHandler.serialize(urnComponents, options)
+  }
+
+  const uriComponents = urnComponents
+  const nss = urnComponents.nss
+  uriComponents.path = `${nid || options.nid}:${nss}`
+
+  options.skipEscape = true
+  return uriComponents
+}
+
+function urnuuidParse (urnComponents, options) {
+  const uuidComponents = urnComponents
+  uuidComponents.uuid = uuidComponents.nss
+  uuidComponents.nss = undefined
+
+  if (!options.tolerant && (!uuidComponents.uuid || !UUID_REG.test(uuidComponents.uuid))) {
+    uuidComponents.error = uuidComponents.error || 'UUID is not valid.'
+  }
+
+  return uuidComponents
+}
+
+function urnuuidSerialize (uuidComponents) {
+  const urnComponents = uuidComponents
+  // normalize UUID
+  urnComponents.nss = (uuidComponents.uuid || '').toLowerCase()
+  return urnComponents
+}
+
+const http = {
+  scheme: 'http',
+  domainHost: true,
+  parse: httpParse,
+  serialize: httpSerialize
+}
+
+const https = {
+  scheme: 'https',
+  domainHost: http.domainHost,
+  parse: httpParse,
+  serialize: httpSerialize
+}
+
+const ws = {
+  scheme: 'ws',
+  domainHost: true,
+  parse: wsParse,
+  serialize: wsSerialize
+}
+
+const wss = {
+  scheme: 'wss',
+  domainHost: ws.domainHost,
+  parse: ws.parse,
+  serialize: ws.serialize
+}
+
+const urn = {
+  scheme: 'urn',
+  parse: urnParse,
+  serialize: urnSerialize,
+  skipNormalize: true
+}
+
+const urnuuid = {
+  scheme: 'urn:uuid',
+  parse: urnuuidParse,
+  serialize: urnuuidSerialize,
+  skipNormalize: true
+}
+
+const SCHEMES = {
+  http,
+  https,
+  ws,
+  wss,
+  urn,
+  'urn:uuid': urnuuid
+}
+
+module.exports = SCHEMES
+
+
+/***/ }),
+
+/***/ 1553:
+/***/ ((module) => {
+
+"use strict";
+
+
+const HEX = {
+  0: 0,
+  1: 1,
+  2: 2,
+  3: 3,
+  4: 4,
+  5: 5,
+  6: 6,
+  7: 7,
+  8: 8,
+  9: 9,
+  a: 10,
+  A: 10,
+  b: 11,
+  B: 11,
+  c: 12,
+  C: 12,
+  d: 13,
+  D: 13,
+  e: 14,
+  E: 14,
+  f: 15,
+  F: 15
+}
+
+module.exports = {
+  HEX
+}
+
+
+/***/ }),
+
+/***/ 5077:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+const { HEX } = __nccwpck_require__(1553)
+
+function normalizeIPv4 (host) {
+  if (findToken(host, '.') < 3) { return { host, isIPV4: false } }
+  const matches = host.match(/^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/u) || []
+  const [address] = matches
+  if (address) {
+    return { host: stripLeadingZeros(address, '.'), isIPV4: true }
+  } else {
+    return { host, isIPV4: false }
+  }
+}
+
+/**
+ * @param {string[]} input
+ * @param {boolean} [keepZero=false]
+ * @returns {string|undefined}
+ */
+function stringArrayToHexStripped (input, keepZero = false) {
+  let acc = ''
+  let strip = true
+  for (const c of input) {
+    if (HEX[c] === undefined) return undefined
+    if (c !== '0' && strip === true) strip = false
+    if (!strip) acc += c
+  }
+  if (keepZero && acc.length === 0) acc = '0'
+  return acc
+}
+
+function getIPV6 (input) {
+  let tokenCount = 0
+  const output = { error: false, address: '', zone: '' }
+  const address = []
+  const buffer = []
+  let isZone = false
+  let endipv6Encountered = false
+  let endIpv6 = false
+
+  function consume () {
+    if (buffer.length) {
+      if (isZone === false) {
+        const hex = stringArrayToHexStripped(buffer)
+        if (hex !== undefined) {
+          address.push(hex)
+        } else {
+          output.error = true
+          return false
+        }
+      }
+      buffer.length = 0
+    }
+    return true
+  }
+
+  for (let i = 0; i < input.length; i++) {
+    const cursor = input[i]
+    if (cursor === '[' || cursor === ']') { continue }
+    if (cursor === ':') {
+      if (endipv6Encountered === true) {
+        endIpv6 = true
+      }
+      if (!consume()) { break }
+      tokenCount++
+      address.push(':')
+      if (tokenCount > 7) {
+        // not valid
+        output.error = true
+        break
+      }
+      if (i - 1 >= 0 && input[i - 1] === ':') {
+        endipv6Encountered = true
+      }
+      continue
+    } else if (cursor === '%') {
+      if (!consume()) { break }
+      // switch to zone detection
+      isZone = true
+    } else {
+      buffer.push(cursor)
+      continue
+    }
+  }
+  if (buffer.length) {
+    if (isZone) {
+      output.zone = buffer.join('')
+    } else if (endIpv6) {
+      address.push(buffer.join(''))
+    } else {
+      address.push(stringArrayToHexStripped(buffer))
+    }
+  }
+  output.address = address.join('')
+  return output
+}
+
+function normalizeIPv6 (host, opts = {}) {
+  if (findToken(host, ':') < 2) { return { host, isIPV6: false } }
+  const ipv6 = getIPV6(host)
+
+  if (!ipv6.error) {
+    let newHost = ipv6.address
+    let escapedHost = ipv6.address
+    if (ipv6.zone) {
+      newHost += '%' + ipv6.zone
+      escapedHost += '%25' + ipv6.zone
+    }
+    return { host: newHost, escapedHost, isIPV6: true }
+  } else {
+    return { host, isIPV6: false }
+  }
+}
+
+function stripLeadingZeros (str, token) {
+  let out = ''
+  let skip = true
+  const l = str.length
+  for (let i = 0; i < l; i++) {
+    const c = str[i]
+    if (c === '0' && skip) {
+      if ((i + 1 <= l && str[i + 1] === token) || i + 1 === l) {
+        out += c
+        skip = false
+      }
+    } else {
+      if (c === token) {
+        skip = true
+      } else {
+        skip = false
+      }
+      out += c
+    }
+  }
+  return out
+}
+
+function findToken (str, token) {
+  let ind = 0
+  for (let i = 0; i < str.length; i++) {
+    if (str[i] === token) ind++
+  }
+  return ind
+}
+
+const RDS1 = /^\.\.?\//u
+const RDS2 = /^\/\.(?:\/|$)/u
+const RDS3 = /^\/\.\.(?:\/|$)/u
+const RDS5 = /^\/?(?:.|\n)*?(?=\/|$)/u
+
+function removeDotSegments (input) {
+  const output = []
+
+  while (input.length) {
+    if (input.match(RDS1)) {
+      input = input.replace(RDS1, '')
+    } else if (input.match(RDS2)) {
+      input = input.replace(RDS2, '/')
+    } else if (input.match(RDS3)) {
+      input = input.replace(RDS3, '/')
+      output.pop()
+    } else if (input === '.' || input === '..') {
+      input = ''
+    } else {
+      const im = input.match(RDS5)
+      if (im) {
+        const s = im[0]
+        input = input.slice(s.length)
+        output.push(s)
+      } else {
+        throw new Error('Unexpected dot segment condition')
+      }
+    }
+  }
+  return output.join('')
+}
+
+function normalizeComponentEncoding (components, esc) {
+  const func = esc !== true ? escape : unescape
+  if (components.scheme !== undefined) {
+    components.scheme = func(components.scheme)
+  }
+  if (components.userinfo !== undefined) {
+    components.userinfo = func(components.userinfo)
+  }
+  if (components.host !== undefined) {
+    components.host = func(components.host)
+  }
+  if (components.path !== undefined) {
+    components.path = func(components.path)
+  }
+  if (components.query !== undefined) {
+    components.query = func(components.query)
+  }
+  if (components.fragment !== undefined) {
+    components.fragment = func(components.fragment)
+  }
+  return components
+}
+
+function recomposeAuthority (components, options) {
+  const uriTokens = []
+
+  if (components.userinfo !== undefined) {
+    uriTokens.push(components.userinfo)
+    uriTokens.push('@')
+  }
+
+  if (components.host !== undefined) {
+    let host = unescape(components.host)
+    const ipV4res = normalizeIPv4(host)
+
+    if (ipV4res.isIPV4) {
+      host = ipV4res.host
+    } else {
+      const ipV6res = normalizeIPv6(ipV4res.host, { isIPV4: false })
+      if (ipV6res.isIPV6 === true) {
+        host = `[${ipV6res.escapedHost}]`
+      } else {
+        host = components.host
+      }
+    }
+    uriTokens.push(host)
+  }
+
+  if (typeof components.port === 'number' || typeof components.port === 'string') {
+    uriTokens.push(':')
+    uriTokens.push(String(components.port))
+  }
+
+  return uriTokens.length ? uriTokens.join('') : undefined
+};
+
+module.exports = {
+  recomposeAuthority,
+  normalizeComponentEncoding,
+  removeDotSegments,
+  normalizeIPv4,
+  normalizeIPv6,
+  stringArrayToHexStripped
+}
+
+
+/***/ }),
+
+/***/ 8275:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.Minipass = exports.isWritable = exports.isReadable = exports.isStream = void 0;
+const proc = typeof process === 'object' && process
+    ? process
+    : {
+        stdout: null,
+        stderr: null,
+    };
+const node_events_1 = __nccwpck_require__(8474);
+const node_stream_1 = __importDefault(__nccwpck_require__(7075));
+const node_string_decoder_1 = __nccwpck_require__(6193);
+/**
+ * Return true if the argument is a Minipass stream, Node stream, or something
+ * else that Minipass can interact with.
+ */
+const isStream = (s) => !!s &&
+    typeof s === 'object' &&
+    (s instanceof Minipass ||
+        s instanceof node_stream_1.default ||
+        (0, exports.isReadable)(s) ||
+        (0, exports.isWritable)(s));
+exports.isStream = isStream;
+/**
+ * Return true if the argument is a valid {@link Minipass.Readable}
+ */
+const isReadable = (s) => !!s &&
+    typeof s === 'object' &&
+    s instanceof node_events_1.EventEmitter &&
+    typeof s.pipe === 'function' &&
+    // node core Writable streams have a pipe() method, but it throws
+    s.pipe !== node_stream_1.default.Writable.prototype.pipe;
+exports.isReadable = isReadable;
+/**
+ * Return true if the argument is a valid {@link Minipass.Writable}
+ */
+const isWritable = (s) => !!s &&
+    typeof s === 'object' &&
+    s instanceof node_events_1.EventEmitter &&
+    typeof s.write === 'function' &&
+    typeof s.end === 'function';
+exports.isWritable = isWritable;
+const EOF = Symbol('EOF');
+const MAYBE_EMIT_END = Symbol('maybeEmitEnd');
+const EMITTED_END = Symbol('emittedEnd');
+const EMITTING_END = Symbol('emittingEnd');
+const EMITTED_ERROR = Symbol('emittedError');
+const CLOSED = Symbol('closed');
+const READ = Symbol('read');
+const FLUSH = Symbol('flush');
+const FLUSHCHUNK = Symbol('flushChunk');
+const ENCODING = Symbol('encoding');
+const DECODER = Symbol('decoder');
+const FLOWING = Symbol('flowing');
+const PAUSED = Symbol('paused');
+const RESUME = Symbol('resume');
+const BUFFER = Symbol('buffer');
+const PIPES = Symbol('pipes');
+const BUFFERLENGTH = Symbol('bufferLength');
+const BUFFERPUSH = Symbol('bufferPush');
+const BUFFERSHIFT = Symbol('bufferShift');
+const OBJECTMODE = Symbol('objectMode');
+// internal event when stream is destroyed
+const DESTROYED = Symbol('destroyed');
+// internal event when stream has an error
+const ERROR = Symbol('error');
+const EMITDATA = Symbol('emitData');
+const EMITEND = Symbol('emitEnd');
+const EMITEND2 = Symbol('emitEnd2');
+const ASYNC = Symbol('async');
+const ABORT = Symbol('abort');
+const ABORTED = Symbol('aborted');
+const SIGNAL = Symbol('signal');
+const DATALISTENERS = Symbol('dataListeners');
+const DISCARDED = Symbol('discarded');
+const defer = (fn) => Promise.resolve().then(fn);
+const nodefer = (fn) => fn();
+const isEndish = (ev) => ev === 'end' || ev === 'finish' || ev === 'prefinish';
+const isArrayBufferLike = (b) => b instanceof ArrayBuffer ||
+    (!!b &&
+        typeof b === 'object' &&
+        b.constructor &&
+        b.constructor.name === 'ArrayBuffer' &&
+        b.byteLength >= 0);
+const isArrayBufferView = (b) => !Buffer.isBuffer(b) && ArrayBuffer.isView(b);
+/**
+ * Internal class representing a pipe to a destination stream.
+ *
+ * @internal
+ */
+class Pipe {
+    src;
+    dest;
+    opts;
+    ondrain;
+    constructor(src, dest, opts) {
+        this.src = src;
+        this.dest = dest;
+        this.opts = opts;
+        this.ondrain = () => src[RESUME]();
+        this.dest.on('drain', this.ondrain);
+    }
+    unpipe() {
+        this.dest.removeListener('drain', this.ondrain);
+    }
+    // only here for the prototype
+    /* c8 ignore start */
+    proxyErrors(_er) { }
+    /* c8 ignore stop */
+    end() {
+        this.unpipe();
+        if (this.opts.end)
+            this.dest.end();
+    }
+}
+/**
+ * Internal class representing a pipe to a destination stream where
+ * errors are proxied.
+ *
+ * @internal
+ */
+class PipeProxyErrors extends Pipe {
+    unpipe() {
+        this.src.removeListener('error', this.proxyErrors);
+        super.unpipe();
+    }
+    constructor(src, dest, opts) {
+        super(src, dest, opts);
+        this.proxyErrors = er => dest.emit('error', er);
+        src.on('error', this.proxyErrors);
+    }
+}
+const isObjectModeOptions = (o) => !!o.objectMode;
+const isEncodingOptions = (o) => !o.objectMode && !!o.encoding && o.encoding !== 'buffer';
+/**
+ * Main export, the Minipass class
+ *
+ * `RType` is the type of data emitted, defaults to Buffer
+ *
+ * `WType` is the type of data to be written, if RType is buffer or string,
+ * then any {@link Minipass.ContiguousData} is allowed.
+ *
+ * `Events` is the set of event handler signatures that this object
+ * will emit, see {@link Minipass.Events}
+ */
+class Minipass extends node_events_1.EventEmitter {
+    [FLOWING] = false;
+    [PAUSED] = false;
+    [PIPES] = [];
+    [BUFFER] = [];
+    [OBJECTMODE];
+    [ENCODING];
+    [ASYNC];
+    [DECODER];
+    [EOF] = false;
+    [EMITTED_END] = false;
+    [EMITTING_END] = false;
+    [CLOSED] = false;
+    [EMITTED_ERROR] = null;
+    [BUFFERLENGTH] = 0;
+    [DESTROYED] = false;
+    [SIGNAL];
+    [ABORTED] = false;
+    [DATALISTENERS] = 0;
+    [DISCARDED] = false;
+    /**
+     * true if the stream can be written
+     */
+    writable = true;
+    /**
+     * true if the stream can be read
+     */
+    readable = true;
+    /**
+     * If `RType` is Buffer, then options do not need to be provided.
+     * Otherwise, an options object must be provided to specify either
+     * {@link Minipass.SharedOptions.objectMode} or
+     * {@link Minipass.SharedOptions.encoding}, as appropriate.
+     */
+    constructor(...args) {
+        const options = (args[0] ||
+            {});
+        super();
+        if (options.objectMode && typeof options.encoding === 'string') {
+            throw new TypeError('Encoding and objectMode may not be used together');
+        }
+        if (isObjectModeOptions(options)) {
+            this[OBJECTMODE] = true;
+            this[ENCODING] = null;
+        }
+        else if (isEncodingOptions(options)) {
+            this[ENCODING] = options.encoding;
+            this[OBJECTMODE] = false;
+        }
+        else {
+            this[OBJECTMODE] = false;
+            this[ENCODING] = null;
+        }
+        this[ASYNC] = !!options.async;
+        this[DECODER] = this[ENCODING]
+            ? new node_string_decoder_1.StringDecoder(this[ENCODING])
+            : null;
+        //@ts-ignore - private option for debugging and testing
+        if (options && options.debugExposeBuffer === true) {
+            Object.defineProperty(this, 'buffer', { get: () => this[BUFFER] });
+        }
+        //@ts-ignore - private option for debugging and testing
+        if (options && options.debugExposePipes === true) {
+            Object.defineProperty(this, 'pipes', { get: () => this[PIPES] });
+        }
+        const { signal } = options;
+        if (signal) {
+            this[SIGNAL] = signal;
+            if (signal.aborted) {
+                this[ABORT]();
+            }
+            else {
+                signal.addEventListener('abort', () => this[ABORT]());
+            }
+        }
+    }
+    /**
+     * The amount of data stored in the buffer waiting to be read.
+     *
+     * For Buffer strings, this will be the total byte length.
+     * For string encoding streams, this will be the string character length,
+     * according to JavaScript's `string.length` logic.
+     * For objectMode streams, this is a count of the items waiting to be
+     * emitted.
+     */
+    get bufferLength() {
+        return this[BUFFERLENGTH];
+    }
+    /**
+     * The `BufferEncoding` currently in use, or `null`
+     */
+    get encoding() {
+        return this[ENCODING];
+    }
+    /**
+     * @deprecated - This is a read only property
+     */
+    set encoding(_enc) {
+        throw new Error('Encoding must be set at instantiation time');
+    }
+    /**
+     * @deprecated - Encoding may only be set at instantiation time
+     */
+    setEncoding(_enc) {
+        throw new Error('Encoding must be set at instantiation time');
+    }
+    /**
+     * True if this is an objectMode stream
+     */
+    get objectMode() {
+        return this[OBJECTMODE];
+    }
+    /**
+     * @deprecated - This is a read-only property
+     */
+    set objectMode(_om) {
+        throw new Error('objectMode must be set at instantiation time');
+    }
+    /**
+     * true if this is an async stream
+     */
+    get ['async']() {
+        return this[ASYNC];
+    }
+    /**
+     * Set to true to make this stream async.
+     *
+     * Once set, it cannot be unset, as this would potentially cause incorrect
+     * behavior.  Ie, a sync stream can be made async, but an async stream
+     * cannot be safely made sync.
+     */
+    set ['async'](a) {
+        this[ASYNC] = this[ASYNC] || !!a;
+    }
+    // drop everything and get out of the flow completely
+    [ABORT]() {
+        this[ABORTED] = true;
+        this.emit('abort', this[SIGNAL]?.reason);
+        this.destroy(this[SIGNAL]?.reason);
+    }
+    /**
+     * True if the stream has been aborted.
+     */
+    get aborted() {
+        return this[ABORTED];
+    }
+    /**
+     * No-op setter. Stream aborted status is set via the AbortSignal provided
+     * in the constructor options.
+     */
+    set aborted(_) { }
+    write(chunk, encoding, cb) {
+        if (this[ABORTED])
+            return false;
+        if (this[EOF])
+            throw new Error('write after end');
+        if (this[DESTROYED]) {
+            this.emit('error', Object.assign(new Error('Cannot call write after a stream was destroyed'), { code: 'ERR_STREAM_DESTROYED' }));
+            return true;
+        }
+        if (typeof encoding === 'function') {
+            cb = encoding;
+            encoding = 'utf8';
+        }
+        if (!encoding)
+            encoding = 'utf8';
+        const fn = this[ASYNC] ? defer : nodefer;
+        // convert array buffers and typed array views into buffers
+        // at some point in the future, we may want to do the opposite!
+        // leave strings and buffers as-is
+        // anything is only allowed if in object mode, so throw
+        if (!this[OBJECTMODE] && !Buffer.isBuffer(chunk)) {
+            if (isArrayBufferView(chunk)) {
+                //@ts-ignore - sinful unsafe type changing
+                chunk = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+            }
+            else if (isArrayBufferLike(chunk)) {
+                //@ts-ignore - sinful unsafe type changing
+                chunk = Buffer.from(chunk);
+            }
+            else if (typeof chunk !== 'string') {
+                throw new Error('Non-contiguous data written to non-objectMode stream');
+            }
+        }
+        // handle object mode up front, since it's simpler
+        // this yields better performance, fewer checks later.
+        if (this[OBJECTMODE]) {
+            // maybe impossible?
+            /* c8 ignore start */
+            if (this[FLOWING] && this[BUFFERLENGTH] !== 0)
+                this[FLUSH](true);
+            /* c8 ignore stop */
+            if (this[FLOWING])
+                this.emit('data', chunk);
+            else
+                this[BUFFERPUSH](chunk);
+            if (this[BUFFERLENGTH] !== 0)
+                this.emit('readable');
+            if (cb)
+                fn(cb);
+            return this[FLOWING];
+        }
+        // at this point the chunk is a buffer or string
+        // don't buffer it up or send it to the decoder
+        if (!chunk.length) {
+            if (this[BUFFERLENGTH] !== 0)
+                this.emit('readable');
+            if (cb)
+                fn(cb);
+            return this[FLOWING];
+        }
+        // fast-path writing strings of same encoding to a stream with
+        // an empty buffer, skipping the buffer/decoder dance
+        if (typeof chunk === 'string' &&
+            // unless it is a string already ready for us to use
+            !(encoding === this[ENCODING] && !this[DECODER]?.lastNeed)) {
+            //@ts-ignore - sinful unsafe type change
+            chunk = Buffer.from(chunk, encoding);
+        }
+        if (Buffer.isBuffer(chunk) && this[ENCODING]) {
+            //@ts-ignore - sinful unsafe type change
+            chunk = this[DECODER].write(chunk);
+        }
+        // Note: flushing CAN potentially switch us into not-flowing mode
+        if (this[FLOWING] && this[BUFFERLENGTH] !== 0)
+            this[FLUSH](true);
+        if (this[FLOWING])
+            this.emit('data', chunk);
+        else
+            this[BUFFERPUSH](chunk);
+        if (this[BUFFERLENGTH] !== 0)
+            this.emit('readable');
+        if (cb)
+            fn(cb);
+        return this[FLOWING];
+    }
+    /**
+     * Low-level explicit read method.
+     *
+     * In objectMode, the argument is ignored, and one item is returned if
+     * available.
+     *
+     * `n` is the number of bytes (or in the case of encoding streams,
+     * characters) to consume. If `n` is not provided, then the entire buffer
+     * is returned, or `null` is returned if no data is available.
+     *
+     * If `n` is greater that the amount of data in the internal buffer,
+     * then `null` is returned.
+     */
+    read(n) {
+        if (this[DESTROYED])
+            return null;
+        this[DISCARDED] = false;
+        if (this[BUFFERLENGTH] === 0 ||
+            n === 0 ||
+            (n && n > this[BUFFERLENGTH])) {
+            this[MAYBE_EMIT_END]();
+            return null;
+        }
+        if (this[OBJECTMODE])
+            n = null;
+        if (this[BUFFER].length > 1 && !this[OBJECTMODE]) {
+            // not object mode, so if we have an encoding, then RType is string
+            // otherwise, must be Buffer
+            this[BUFFER] = [
+                (this[ENCODING]
+                    ? this[BUFFER].join('')
+                    : Buffer.concat(this[BUFFER], this[BUFFERLENGTH])),
+            ];
+        }
+        const ret = this[READ](n || null, this[BUFFER][0]);
+        this[MAYBE_EMIT_END]();
+        return ret;
+    }
+    [READ](n, chunk) {
+        if (this[OBJECTMODE])
+            this[BUFFERSHIFT]();
+        else {
+            const c = chunk;
+            if (n === c.length || n === null)
+                this[BUFFERSHIFT]();
+            else if (typeof c === 'string') {
+                this[BUFFER][0] = c.slice(n);
+                chunk = c.slice(0, n);
+                this[BUFFERLENGTH] -= n;
+            }
+            else {
+                this[BUFFER][0] = c.subarray(n);
+                chunk = c.subarray(0, n);
+                this[BUFFERLENGTH] -= n;
+            }
+        }
+        this.emit('data', chunk);
+        if (!this[BUFFER].length && !this[EOF])
+            this.emit('drain');
+        return chunk;
+    }
+    end(chunk, encoding, cb) {
+        if (typeof chunk === 'function') {
+            cb = chunk;
+            chunk = undefined;
+        }
+        if (typeof encoding === 'function') {
+            cb = encoding;
+            encoding = 'utf8';
+        }
+        if (chunk !== undefined)
+            this.write(chunk, encoding);
+        if (cb)
+            this.once('end', cb);
+        this[EOF] = true;
+        this.writable = false;
+        // if we haven't written anything, then go ahead and emit,
+        // even if we're not reading.
+        // we'll re-emit if a new 'end' listener is added anyway.
+        // This makes MP more suitable to write-only use cases.
+        if (this[FLOWING] || !this[PAUSED])
+            this[MAYBE_EMIT_END]();
+        return this;
+    }
+    // don't let the internal resume be overwritten
+    [RESUME]() {
+        if (this[DESTROYED])
+            return;
+        if (!this[DATALISTENERS] && !this[PIPES].length) {
+            this[DISCARDED] = true;
+        }
+        this[PAUSED] = false;
+        this[FLOWING] = true;
+        this.emit('resume');
+        if (this[BUFFER].length)
+            this[FLUSH]();
+        else if (this[EOF])
+            this[MAYBE_EMIT_END]();
+        else
+            this.emit('drain');
+    }
+    /**
+     * Resume the stream if it is currently in a paused state
+     *
+     * If called when there are no pipe destinations or `data` event listeners,
+     * this will place the stream in a "discarded" state, where all data will
+     * be thrown away. The discarded state is removed if a pipe destination or
+     * data handler is added, if pause() is called, or if any synchronous or
+     * asynchronous iteration is started.
+     */
+    resume() {
+        return this[RESUME]();
+    }
+    /**
+     * Pause the stream
+     */
+    pause() {
+        this[FLOWING] = false;
+        this[PAUSED] = true;
+        this[DISCARDED] = false;
+    }
+    /**
+     * true if the stream has been forcibly destroyed
+     */
+    get destroyed() {
+        return this[DESTROYED];
+    }
+    /**
+     * true if the stream is currently in a flowing state, meaning that
+     * any writes will be immediately emitted.
+     */
+    get flowing() {
+        return this[FLOWING];
+    }
+    /**
+     * true if the stream is currently in a paused state
+     */
+    get paused() {
+        return this[PAUSED];
+    }
+    [BUFFERPUSH](chunk) {
+        if (this[OBJECTMODE])
+            this[BUFFERLENGTH] += 1;
+        else
+            this[BUFFERLENGTH] += chunk.length;
+        this[BUFFER].push(chunk);
+    }
+    [BUFFERSHIFT]() {
+        if (this[OBJECTMODE])
+            this[BUFFERLENGTH] -= 1;
+        else
+            this[BUFFERLENGTH] -= this[BUFFER][0].length;
+        return this[BUFFER].shift();
+    }
+    [FLUSH](noDrain = false) {
+        do { } while (this[FLUSHCHUNK](this[BUFFERSHIFT]()) &&
+            this[BUFFER].length);
+        if (!noDrain && !this[BUFFER].length && !this[EOF])
+            this.emit('drain');
+    }
+    [FLUSHCHUNK](chunk) {
+        this.emit('data', chunk);
+        return this[FLOWING];
+    }
+    /**
+     * Pipe all data emitted by this stream into the destination provided.
+     *
+     * Triggers the flow of data.
+     */
+    pipe(dest, opts) {
+        if (this[DESTROYED])
+            return dest;
+        this[DISCARDED] = false;
+        const ended = this[EMITTED_END];
+        opts = opts || {};
+        if (dest === proc.stdout || dest === proc.stderr)
+            opts.end = false;
+        else
+            opts.end = opts.end !== false;
+        opts.proxyErrors = !!opts.proxyErrors;
+        // piping an ended stream ends immediately
+        if (ended) {
+            if (opts.end)
+                dest.end();
+        }
+        else {
+            // "as" here just ignores the WType, which pipes don't care about,
+            // since they're only consuming from us, and writing to the dest
+            this[PIPES].push(!opts.proxyErrors
+                ? new Pipe(this, dest, opts)
+                : new PipeProxyErrors(this, dest, opts));
+            if (this[ASYNC])
+                defer(() => this[RESUME]());
+            else
+                this[RESUME]();
+        }
+        return dest;
+    }
+    /**
+     * Fully unhook a piped destination stream.
+     *
+     * If the destination stream was the only consumer of this stream (ie,
+     * there are no other piped destinations or `'data'` event listeners)
+     * then the flow of data will stop until there is another consumer or
+     * {@link Minipass#resume} is explicitly called.
+     */
+    unpipe(dest) {
+        const p = this[PIPES].find(p => p.dest === dest);
+        if (p) {
+            if (this[PIPES].length === 1) {
+                if (this[FLOWING] && this[DATALISTENERS] === 0) {
+                    this[FLOWING] = false;
+                }
+                this[PIPES] = [];
+            }
+            else
+                this[PIPES].splice(this[PIPES].indexOf(p), 1);
+            p.unpipe();
+        }
+    }
+    /**
+     * Alias for {@link Minipass#on}
+     */
+    addListener(ev, handler) {
+        return this.on(ev, handler);
+    }
+    /**
+     * Mostly identical to `EventEmitter.on`, with the following
+     * behavior differences to prevent data loss and unnecessary hangs:
+     *
+     * - Adding a 'data' event handler will trigger the flow of data
+     *
+     * - Adding a 'readable' event handler when there is data waiting to be read
+     *   will cause 'readable' to be emitted immediately.
+     *
+     * - Adding an 'endish' event handler ('end', 'finish', etc.) which has
+     *   already passed will cause the event to be emitted immediately and all
+     *   handlers removed.
+     *
+     * - Adding an 'error' event handler after an error has been emitted will
+     *   cause the event to be re-emitted immediately with the error previously
+     *   raised.
+     */
+    on(ev, handler) {
+        const ret = super.on(ev, handler);
+        if (ev === 'data') {
+            this[DISCARDED] = false;
+            this[DATALISTENERS]++;
+            if (!this[PIPES].length && !this[FLOWING]) {
+                this[RESUME]();
+            }
+        }
+        else if (ev === 'readable' && this[BUFFERLENGTH] !== 0) {
+            super.emit('readable');
+        }
+        else if (isEndish(ev) && this[EMITTED_END]) {
+            super.emit(ev);
+            this.removeAllListeners(ev);
+        }
+        else if (ev === 'error' && this[EMITTED_ERROR]) {
+            const h = handler;
+            if (this[ASYNC])
+                defer(() => h.call(this, this[EMITTED_ERROR]));
+            else
+                h.call(this, this[EMITTED_ERROR]);
+        }
+        return ret;
+    }
+    /**
+     * Alias for {@link Minipass#off}
+     */
+    removeListener(ev, handler) {
+        return this.off(ev, handler);
+    }
+    /**
+     * Mostly identical to `EventEmitter.off`
+     *
+     * If a 'data' event handler is removed, and it was the last consumer
+     * (ie, there are no pipe destinations or other 'data' event listeners),
+     * then the flow of data will stop until there is another consumer or
+     * {@link Minipass#resume} is explicitly called.
+     */
+    off(ev, handler) {
+        const ret = super.off(ev, handler);
+        // if we previously had listeners, and now we don't, and we don't
+        // have any pipes, then stop the flow, unless it's been explicitly
+        // put in a discarded flowing state via stream.resume().
+        if (ev === 'data') {
+            this[DATALISTENERS] = this.listeners('data').length;
+            if (this[DATALISTENERS] === 0 &&
+                !this[DISCARDED] &&
+                !this[PIPES].length) {
+                this[FLOWING] = false;
+            }
+        }
+        return ret;
+    }
+    /**
+     * Mostly identical to `EventEmitter.removeAllListeners`
+     *
+     * If all 'data' event handlers are removed, and they were the last consumer
+     * (ie, there are no pipe destinations), then the flow of data will stop
+     * until there is another consumer or {@link Minipass#resume} is explicitly
+     * called.
+     */
+    removeAllListeners(ev) {
+        const ret = super.removeAllListeners(ev);
+        if (ev === 'data' || ev === undefined) {
+            this[DATALISTENERS] = 0;
+            if (!this[DISCARDED] && !this[PIPES].length) {
+                this[FLOWING] = false;
+            }
+        }
+        return ret;
+    }
+    /**
+     * true if the 'end' event has been emitted
+     */
+    get emittedEnd() {
+        return this[EMITTED_END];
+    }
+    [MAYBE_EMIT_END]() {
+        if (!this[EMITTING_END] &&
+            !this[EMITTED_END] &&
+            !this[DESTROYED] &&
+            this[BUFFER].length === 0 &&
+            this[EOF]) {
+            this[EMITTING_END] = true;
+            this.emit('end');
+            this.emit('prefinish');
+            this.emit('finish');
+            if (this[CLOSED])
+                this.emit('close');
+            this[EMITTING_END] = false;
+        }
+    }
+    /**
+     * Mostly identical to `EventEmitter.emit`, with the following
+     * behavior differences to prevent data loss and unnecessary hangs:
+     *
+     * If the stream has been destroyed, and the event is something other
+     * than 'close' or 'error', then `false` is returned and no handlers
+     * are called.
+     *
+     * If the event is 'end', and has already been emitted, then the event
+     * is ignored. If the stream is in a paused or non-flowing state, then
+     * the event will be deferred until data flow resumes. If the stream is
+     * async, then handlers will be called on the next tick rather than
+     * immediately.
+     *
+     * If the event is 'close', and 'end' has not yet been emitted, then
+     * the event will be deferred until after 'end' is emitted.
+     *
+     * If the event is 'error', and an AbortSignal was provided for the stream,
+     * and there are no listeners, then the event is ignored, matching the
+     * behavior of node core streams in the presense of an AbortSignal.
+     *
+     * If the event is 'finish' or 'prefinish', then all listeners will be
+     * removed after emitting the event, to prevent double-firing.
+     */
+    emit(ev, ...args) {
+        const data = args[0];
+        // error and close are only events allowed after calling destroy()
+        if (ev !== 'error' &&
+            ev !== 'close' &&
+            ev !== DESTROYED &&
+            this[DESTROYED]) {
+            return false;
+        }
+        else if (ev === 'data') {
+            return !this[OBJECTMODE] && !data
+                ? false
+                : this[ASYNC]
+                    ? (defer(() => this[EMITDATA](data)), true)
+                    : this[EMITDATA](data);
+        }
+        else if (ev === 'end') {
+            return this[EMITEND]();
+        }
+        else if (ev === 'close') {
+            this[CLOSED] = true;
+            // don't emit close before 'end' and 'finish'
+            if (!this[EMITTED_END] && !this[DESTROYED])
+                return false;
+            const ret = super.emit('close');
+            this.removeAllListeners('close');
+            return ret;
+        }
+        else if (ev === 'error') {
+            this[EMITTED_ERROR] = data;
+            super.emit(ERROR, data);
+            const ret = !this[SIGNAL] || this.listeners('error').length
+                ? super.emit('error', data)
+                : false;
+            this[MAYBE_EMIT_END]();
+            return ret;
+        }
+        else if (ev === 'resume') {
+            const ret = super.emit('resume');
+            this[MAYBE_EMIT_END]();
+            return ret;
+        }
+        else if (ev === 'finish' || ev === 'prefinish') {
+            const ret = super.emit(ev);
+            this.removeAllListeners(ev);
+            return ret;
+        }
+        // Some other unknown event
+        const ret = super.emit(ev, ...args);
+        this[MAYBE_EMIT_END]();
+        return ret;
+    }
+    [EMITDATA](data) {
+        for (const p of this[PIPES]) {
+            if (p.dest.write(data) === false)
+                this.pause();
+        }
+        const ret = this[DISCARDED] ? false : super.emit('data', data);
+        this[MAYBE_EMIT_END]();
+        return ret;
+    }
+    [EMITEND]() {
+        if (this[EMITTED_END])
+            return false;
+        this[EMITTED_END] = true;
+        this.readable = false;
+        return this[ASYNC]
+            ? (defer(() => this[EMITEND2]()), true)
+            : this[EMITEND2]();
+    }
+    [EMITEND2]() {
+        if (this[DECODER]) {
+            const data = this[DECODER].end();
+            if (data) {
+                for (const p of this[PIPES]) {
+                    p.dest.write(data);
+                }
+                if (!this[DISCARDED])
+                    super.emit('data', data);
+            }
+        }
+        for (const p of this[PIPES]) {
+            p.end();
+        }
+        const ret = super.emit('end');
+        this.removeAllListeners('end');
+        return ret;
+    }
+    /**
+     * Return a Promise that resolves to an array of all emitted data once
+     * the stream ends.
+     */
+    async collect() {
+        const buf = Object.assign([], {
+            dataLength: 0,
+        });
+        if (!this[OBJECTMODE])
+            buf.dataLength = 0;
+        // set the promise first, in case an error is raised
+        // by triggering the flow here.
+        const p = this.promise();
+        this.on('data', c => {
+            buf.push(c);
+            if (!this[OBJECTMODE])
+                buf.dataLength += c.length;
+        });
+        await p;
+        return buf;
+    }
+    /**
+     * Return a Promise that resolves to the concatenation of all emitted data
+     * once the stream ends.
+     *
+     * Not allowed on objectMode streams.
+     */
+    async concat() {
+        if (this[OBJECTMODE]) {
+            throw new Error('cannot concat in objectMode');
+        }
+        const buf = await this.collect();
+        return (this[ENCODING]
+            ? buf.join('')
+            : Buffer.concat(buf, buf.dataLength));
+    }
+    /**
+     * Return a void Promise that resolves once the stream ends.
+     */
+    async promise() {
+        return new Promise((resolve, reject) => {
+            this.on(DESTROYED, () => reject(new Error('stream destroyed')));
+            this.on('error', er => reject(er));
+            this.on('end', () => resolve());
+        });
+    }
+    /**
+     * Asynchronous `for await of` iteration.
+     *
+     * This will continue emitting all chunks until the stream terminates.
+     */
+    [Symbol.asyncIterator]() {
+        // set this up front, in case the consumer doesn't call next()
+        // right away.
+        this[DISCARDED] = false;
+        let stopped = false;
+        const stop = async () => {
+            this.pause();
+            stopped = true;
+            return { value: undefined, done: true };
+        };
+        const next = () => {
+            if (stopped)
+                return stop();
+            const res = this.read();
+            if (res !== null)
+                return Promise.resolve({ done: false, value: res });
+            if (this[EOF])
+                return stop();
+            let resolve;
+            let reject;
+            const onerr = (er) => {
+                this.off('data', ondata);
+                this.off('end', onend);
+                this.off(DESTROYED, ondestroy);
+                stop();
+                reject(er);
+            };
+            const ondata = (value) => {
+                this.off('error', onerr);
+                this.off('end', onend);
+                this.off(DESTROYED, ondestroy);
+                this.pause();
+                resolve({ value, done: !!this[EOF] });
+            };
+            const onend = () => {
+                this.off('error', onerr);
+                this.off('data', ondata);
+                this.off(DESTROYED, ondestroy);
+                stop();
+                resolve({ done: true, value: undefined });
+            };
+            const ondestroy = () => onerr(new Error('stream destroyed'));
+            return new Promise((res, rej) => {
+                reject = rej;
+                resolve = res;
+                this.once(DESTROYED, ondestroy);
+                this.once('error', onerr);
+                this.once('end', onend);
+                this.once('data', ondata);
+            });
+        };
+        return {
+            next,
+            throw: stop,
+            return: stop,
+            [Symbol.asyncIterator]() {
+                return this;
+            },
+        };
+    }
+    /**
+     * Synchronous `for of` iteration.
+     *
+     * The iteration will terminate when the internal buffer runs out, even
+     * if the stream has not yet terminated.
+     */
+    [Symbol.iterator]() {
+        // set this up front, in case the consumer doesn't call next()
+        // right away.
+        this[DISCARDED] = false;
+        let stopped = false;
+        const stop = () => {
+            this.pause();
+            this.off(ERROR, stop);
+            this.off(DESTROYED, stop);
+            this.off('end', stop);
+            stopped = true;
+            return { done: true, value: undefined };
+        };
+        const next = () => {
+            if (stopped)
+                return stop();
+            const value = this.read();
+            return value === null ? stop() : { done: false, value };
+        };
+        this.once('end', stop);
+        this.once(ERROR, stop);
+        this.once(DESTROYED, stop);
+        return {
+            next,
+            throw: stop,
+            return: stop,
+            [Symbol.iterator]() {
+                return this;
+            },
+        };
+    }
+    /**
+     * Destroy a stream, preventing it from being used for any further purpose.
+     *
+     * If the stream has a `close()` method, then it will be called on
+     * destruction.
+     *
+     * After destruction, any attempt to write data, read data, or emit most
+     * events will be ignored.
+     *
+     * If an error argument is provided, then it will be emitted in an
+     * 'error' event.
+     */
+    destroy(er) {
+        if (this[DESTROYED]) {
+            if (er)
+                this.emit('error', er);
+            else
+                this.emit(DESTROYED);
+            return this;
+        }
+        this[DESTROYED] = true;
+        this[DISCARDED] = true;
+        // throw away all buffered data, it's never coming out
+        this[BUFFER].length = 0;
+        this[BUFFERLENGTH] = 0;
+        const wc = this;
+        if (typeof wc.close === 'function' && !this[CLOSED])
+            wc.close();
+        if (er)
+            this.emit('error', er);
+        // if no error to emit, still reject pending promises
+        else
+            this.emit(DESTROYED);
+        return this;
+    }
+    /**
+     * Alias for {@link isStream}
+     *
+     * Former export location, maintained for backwards compatibility.
+     *
+     * @deprecated
+     */
+    static get isStream() {
+        return exports.isStream;
+    }
+}
+exports.Minipass = Minipass;
+//# sourceMappingURL=index.js.map
+
+/***/ }),
+
+/***/ 6577:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -56796,7 +56278,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PathScurry = exports.Path = exports.PathScurryDarwin = exports.PathScurryPosix = exports.PathScurryWin32 = exports.PathScurryBase = exports.PathPosix = exports.PathWin32 = exports.PathBase = exports.ChildrenCache = exports.ResolveCache = void 0;
-const lru_cache_1 = __nccwpck_require__(2871);
+const lru_cache_1 = __nccwpck_require__(897);
 const node_path_1 = __nccwpck_require__(6760);
 const node_url_1 = __nccwpck_require__(3136);
 const fs_1 = __nccwpck_require__(9896);
@@ -58789,1053 +58271,1573 @@ exports.PathScurry = process.platform === 'win32' ? PathScurryWin32
 
 /***/ }),
 
-/***/ 8275:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+/***/ 897:
+/***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
 
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
+/**
+ * @module LRUCache
+ */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.Minipass = exports.isWritable = exports.isReadable = exports.isStream = void 0;
-const proc = typeof process === 'object' && process
-    ? process
-    : {
-        stdout: null,
-        stderr: null,
+exports.LRUCache = void 0;
+const perf = typeof performance === 'object' &&
+    performance &&
+    typeof performance.now === 'function'
+    ? performance
+    : Date;
+const warned = new Set();
+/* c8 ignore start */
+const PROCESS = (typeof process === 'object' && !!process ? process : {});
+/* c8 ignore start */
+const emitWarning = (msg, type, code, fn) => {
+    typeof PROCESS.emitWarning === 'function'
+        ? PROCESS.emitWarning(msg, type, code, fn)
+        : console.error(`[${code}] ${type}: ${msg}`);
+};
+let AC = globalThis.AbortController;
+let AS = globalThis.AbortSignal;
+/* c8 ignore start */
+if (typeof AC === 'undefined') {
+    //@ts-ignore
+    AS = class AbortSignal {
+        onabort;
+        _onabort = [];
+        reason;
+        aborted = false;
+        addEventListener(_, fn) {
+            this._onabort.push(fn);
+        }
     };
-const node_events_1 = __nccwpck_require__(8474);
-const node_stream_1 = __importDefault(__nccwpck_require__(7075));
-const node_string_decoder_1 = __nccwpck_require__(6193);
-/**
- * Return true if the argument is a Minipass stream, Node stream, or something
- * else that Minipass can interact with.
- */
-const isStream = (s) => !!s &&
-    typeof s === 'object' &&
-    (s instanceof Minipass ||
-        s instanceof node_stream_1.default ||
-        (0, exports.isReadable)(s) ||
-        (0, exports.isWritable)(s));
-exports.isStream = isStream;
-/**
- * Return true if the argument is a valid {@link Minipass.Readable}
- */
-const isReadable = (s) => !!s &&
-    typeof s === 'object' &&
-    s instanceof node_events_1.EventEmitter &&
-    typeof s.pipe === 'function' &&
-    // node core Writable streams have a pipe() method, but it throws
-    s.pipe !== node_stream_1.default.Writable.prototype.pipe;
-exports.isReadable = isReadable;
-/**
- * Return true if the argument is a valid {@link Minipass.Writable}
- */
-const isWritable = (s) => !!s &&
-    typeof s === 'object' &&
-    s instanceof node_events_1.EventEmitter &&
-    typeof s.write === 'function' &&
-    typeof s.end === 'function';
-exports.isWritable = isWritable;
-const EOF = Symbol('EOF');
-const MAYBE_EMIT_END = Symbol('maybeEmitEnd');
-const EMITTED_END = Symbol('emittedEnd');
-const EMITTING_END = Symbol('emittingEnd');
-const EMITTED_ERROR = Symbol('emittedError');
-const CLOSED = Symbol('closed');
-const READ = Symbol('read');
-const FLUSH = Symbol('flush');
-const FLUSHCHUNK = Symbol('flushChunk');
-const ENCODING = Symbol('encoding');
-const DECODER = Symbol('decoder');
-const FLOWING = Symbol('flowing');
-const PAUSED = Symbol('paused');
-const RESUME = Symbol('resume');
-const BUFFER = Symbol('buffer');
-const PIPES = Symbol('pipes');
-const BUFFERLENGTH = Symbol('bufferLength');
-const BUFFERPUSH = Symbol('bufferPush');
-const BUFFERSHIFT = Symbol('bufferShift');
-const OBJECTMODE = Symbol('objectMode');
-// internal event when stream is destroyed
-const DESTROYED = Symbol('destroyed');
-// internal event when stream has an error
-const ERROR = Symbol('error');
-const EMITDATA = Symbol('emitData');
-const EMITEND = Symbol('emitEnd');
-const EMITEND2 = Symbol('emitEnd2');
-const ASYNC = Symbol('async');
-const ABORT = Symbol('abort');
-const ABORTED = Symbol('aborted');
-const SIGNAL = Symbol('signal');
-const DATALISTENERS = Symbol('dataListeners');
-const DISCARDED = Symbol('discarded');
-const defer = (fn) => Promise.resolve().then(fn);
-const nodefer = (fn) => fn();
-const isEndish = (ev) => ev === 'end' || ev === 'finish' || ev === 'prefinish';
-const isArrayBufferLike = (b) => b instanceof ArrayBuffer ||
-    (!!b &&
-        typeof b === 'object' &&
-        b.constructor &&
-        b.constructor.name === 'ArrayBuffer' &&
-        b.byteLength >= 0);
-const isArrayBufferView = (b) => !Buffer.isBuffer(b) && ArrayBuffer.isView(b);
-/**
- * Internal class representing a pipe to a destination stream.
- *
- * @internal
- */
-class Pipe {
-    src;
-    dest;
-    opts;
-    ondrain;
-    constructor(src, dest, opts) {
-        this.src = src;
-        this.dest = dest;
-        this.opts = opts;
-        this.ondrain = () => src[RESUME]();
-        this.dest.on('drain', this.ondrain);
-    }
-    unpipe() {
-        this.dest.removeListener('drain', this.ondrain);
-    }
-    // only here for the prototype
-    /* c8 ignore start */
-    proxyErrors(_er) { }
-    /* c8 ignore stop */
-    end() {
-        this.unpipe();
-        if (this.opts.end)
-            this.dest.end();
-    }
-}
-/**
- * Internal class representing a pipe to a destination stream where
- * errors are proxied.
- *
- * @internal
- */
-class PipeProxyErrors extends Pipe {
-    unpipe() {
-        this.src.removeListener('error', this.proxyErrors);
-        super.unpipe();
-    }
-    constructor(src, dest, opts) {
-        super(src, dest, opts);
-        this.proxyErrors = er => dest.emit('error', er);
-        src.on('error', this.proxyErrors);
-    }
-}
-const isObjectModeOptions = (o) => !!o.objectMode;
-const isEncodingOptions = (o) => !o.objectMode && !!o.encoding && o.encoding !== 'buffer';
-/**
- * Main export, the Minipass class
- *
- * `RType` is the type of data emitted, defaults to Buffer
- *
- * `WType` is the type of data to be written, if RType is buffer or string,
- * then any {@link Minipass.ContiguousData} is allowed.
- *
- * `Events` is the set of event handler signatures that this object
- * will emit, see {@link Minipass.Events}
- */
-class Minipass extends node_events_1.EventEmitter {
-    [FLOWING] = false;
-    [PAUSED] = false;
-    [PIPES] = [];
-    [BUFFER] = [];
-    [OBJECTMODE];
-    [ENCODING];
-    [ASYNC];
-    [DECODER];
-    [EOF] = false;
-    [EMITTED_END] = false;
-    [EMITTING_END] = false;
-    [CLOSED] = false;
-    [EMITTED_ERROR] = null;
-    [BUFFERLENGTH] = 0;
-    [DESTROYED] = false;
-    [SIGNAL];
-    [ABORTED] = false;
-    [DATALISTENERS] = 0;
-    [DISCARDED] = false;
-    /**
-     * true if the stream can be written
-     */
-    writable = true;
-    /**
-     * true if the stream can be read
-     */
-    readable = true;
-    /**
-     * If `RType` is Buffer, then options do not need to be provided.
-     * Otherwise, an options object must be provided to specify either
-     * {@link Minipass.SharedOptions.objectMode} or
-     * {@link Minipass.SharedOptions.encoding}, as appropriate.
-     */
-    constructor(...args) {
-        const options = (args[0] ||
-            {});
-        super();
-        if (options.objectMode && typeof options.encoding === 'string') {
-            throw new TypeError('Encoding and objectMode may not be used together');
+    //@ts-ignore
+    AC = class AbortController {
+        constructor() {
+            warnACPolyfill();
         }
-        if (isObjectModeOptions(options)) {
-            this[OBJECTMODE] = true;
-            this[ENCODING] = null;
-        }
-        else if (isEncodingOptions(options)) {
-            this[ENCODING] = options.encoding;
-            this[OBJECTMODE] = false;
-        }
-        else {
-            this[OBJECTMODE] = false;
-            this[ENCODING] = null;
-        }
-        this[ASYNC] = !!options.async;
-        this[DECODER] = this[ENCODING]
-            ? new node_string_decoder_1.StringDecoder(this[ENCODING])
-            : null;
-        //@ts-ignore - private option for debugging and testing
-        if (options && options.debugExposeBuffer === true) {
-            Object.defineProperty(this, 'buffer', { get: () => this[BUFFER] });
-        }
-        //@ts-ignore - private option for debugging and testing
-        if (options && options.debugExposePipes === true) {
-            Object.defineProperty(this, 'pipes', { get: () => this[PIPES] });
-        }
-        const { signal } = options;
-        if (signal) {
-            this[SIGNAL] = signal;
-            if (signal.aborted) {
-                this[ABORT]();
+        signal = new AS();
+        abort(reason) {
+            if (this.signal.aborted)
+                return;
+            //@ts-ignore
+            this.signal.reason = reason;
+            //@ts-ignore
+            this.signal.aborted = true;
+            //@ts-ignore
+            for (const fn of this.signal._onabort) {
+                fn(reason);
             }
-            else {
-                signal.addEventListener('abort', () => this[ABORT]());
-            }
+            this.signal.onabort?.(reason);
         }
-    }
-    /**
-     * The amount of data stored in the buffer waiting to be read.
-     *
-     * For Buffer strings, this will be the total byte length.
-     * For string encoding streams, this will be the string character length,
-     * according to JavaScript's `string.length` logic.
-     * For objectMode streams, this is a count of the items waiting to be
-     * emitted.
-     */
-    get bufferLength() {
-        return this[BUFFERLENGTH];
-    }
-    /**
-     * The `BufferEncoding` currently in use, or `null`
-     */
-    get encoding() {
-        return this[ENCODING];
-    }
-    /**
-     * @deprecated - This is a read only property
-     */
-    set encoding(_enc) {
-        throw new Error('Encoding must be set at instantiation time');
-    }
-    /**
-     * @deprecated - Encoding may only be set at instantiation time
-     */
-    setEncoding(_enc) {
-        throw new Error('Encoding must be set at instantiation time');
-    }
-    /**
-     * True if this is an objectMode stream
-     */
-    get objectMode() {
-        return this[OBJECTMODE];
-    }
-    /**
-     * @deprecated - This is a read-only property
-     */
-    set objectMode(_om) {
-        throw new Error('objectMode must be set at instantiation time');
-    }
-    /**
-     * true if this is an async stream
-     */
-    get ['async']() {
-        return this[ASYNC];
-    }
-    /**
-     * Set to true to make this stream async.
-     *
-     * Once set, it cannot be unset, as this would potentially cause incorrect
-     * behavior.  Ie, a sync stream can be made async, but an async stream
-     * cannot be safely made sync.
-     */
-    set ['async'](a) {
-        this[ASYNC] = this[ASYNC] || !!a;
-    }
-    // drop everything and get out of the flow completely
-    [ABORT]() {
-        this[ABORTED] = true;
-        this.emit('abort', this[SIGNAL]?.reason);
-        this.destroy(this[SIGNAL]?.reason);
-    }
-    /**
-     * True if the stream has been aborted.
-     */
-    get aborted() {
-        return this[ABORTED];
-    }
-    /**
-     * No-op setter. Stream aborted status is set via the AbortSignal provided
-     * in the constructor options.
-     */
-    set aborted(_) { }
-    write(chunk, encoding, cb) {
-        if (this[ABORTED])
-            return false;
-        if (this[EOF])
-            throw new Error('write after end');
-        if (this[DESTROYED]) {
-            this.emit('error', Object.assign(new Error('Cannot call write after a stream was destroyed'), { code: 'ERR_STREAM_DESTROYED' }));
-            return true;
-        }
-        if (typeof encoding === 'function') {
-            cb = encoding;
-            encoding = 'utf8';
-        }
-        if (!encoding)
-            encoding = 'utf8';
-        const fn = this[ASYNC] ? defer : nodefer;
-        // convert array buffers and typed array views into buffers
-        // at some point in the future, we may want to do the opposite!
-        // leave strings and buffers as-is
-        // anything is only allowed if in object mode, so throw
-        if (!this[OBJECTMODE] && !Buffer.isBuffer(chunk)) {
-            if (isArrayBufferView(chunk)) {
-                //@ts-ignore - sinful unsafe type changing
-                chunk = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
-            }
-            else if (isArrayBufferLike(chunk)) {
-                //@ts-ignore - sinful unsafe type changing
-                chunk = Buffer.from(chunk);
-            }
-            else if (typeof chunk !== 'string') {
-                throw new Error('Non-contiguous data written to non-objectMode stream');
-            }
-        }
-        // handle object mode up front, since it's simpler
-        // this yields better performance, fewer checks later.
-        if (this[OBJECTMODE]) {
-            // maybe impossible?
-            /* c8 ignore start */
-            if (this[FLOWING] && this[BUFFERLENGTH] !== 0)
-                this[FLUSH](true);
-            /* c8 ignore stop */
-            if (this[FLOWING])
-                this.emit('data', chunk);
-            else
-                this[BUFFERPUSH](chunk);
-            if (this[BUFFERLENGTH] !== 0)
-                this.emit('readable');
-            if (cb)
-                fn(cb);
-            return this[FLOWING];
-        }
-        // at this point the chunk is a buffer or string
-        // don't buffer it up or send it to the decoder
-        if (!chunk.length) {
-            if (this[BUFFERLENGTH] !== 0)
-                this.emit('readable');
-            if (cb)
-                fn(cb);
-            return this[FLOWING];
-        }
-        // fast-path writing strings of same encoding to a stream with
-        // an empty buffer, skipping the buffer/decoder dance
-        if (typeof chunk === 'string' &&
-            // unless it is a string already ready for us to use
-            !(encoding === this[ENCODING] && !this[DECODER]?.lastNeed)) {
-            //@ts-ignore - sinful unsafe type change
-            chunk = Buffer.from(chunk, encoding);
-        }
-        if (Buffer.isBuffer(chunk) && this[ENCODING]) {
-            //@ts-ignore - sinful unsafe type change
-            chunk = this[DECODER].write(chunk);
-        }
-        // Note: flushing CAN potentially switch us into not-flowing mode
-        if (this[FLOWING] && this[BUFFERLENGTH] !== 0)
-            this[FLUSH](true);
-        if (this[FLOWING])
-            this.emit('data', chunk);
-        else
-            this[BUFFERPUSH](chunk);
-        if (this[BUFFERLENGTH] !== 0)
-            this.emit('readable');
-        if (cb)
-            fn(cb);
-        return this[FLOWING];
-    }
-    /**
-     * Low-level explicit read method.
-     *
-     * In objectMode, the argument is ignored, and one item is returned if
-     * available.
-     *
-     * `n` is the number of bytes (or in the case of encoding streams,
-     * characters) to consume. If `n` is not provided, then the entire buffer
-     * is returned, or `null` is returned if no data is available.
-     *
-     * If `n` is greater that the amount of data in the internal buffer,
-     * then `null` is returned.
-     */
-    read(n) {
-        if (this[DESTROYED])
-            return null;
-        this[DISCARDED] = false;
-        if (this[BUFFERLENGTH] === 0 ||
-            n === 0 ||
-            (n && n > this[BUFFERLENGTH])) {
-            this[MAYBE_EMIT_END]();
-            return null;
-        }
-        if (this[OBJECTMODE])
-            n = null;
-        if (this[BUFFER].length > 1 && !this[OBJECTMODE]) {
-            // not object mode, so if we have an encoding, then RType is string
-            // otherwise, must be Buffer
-            this[BUFFER] = [
-                (this[ENCODING]
-                    ? this[BUFFER].join('')
-                    : Buffer.concat(this[BUFFER], this[BUFFERLENGTH])),
-            ];
-        }
-        const ret = this[READ](n || null, this[BUFFER][0]);
-        this[MAYBE_EMIT_END]();
-        return ret;
-    }
-    [READ](n, chunk) {
-        if (this[OBJECTMODE])
-            this[BUFFERSHIFT]();
-        else {
-            const c = chunk;
-            if (n === c.length || n === null)
-                this[BUFFERSHIFT]();
-            else if (typeof c === 'string') {
-                this[BUFFER][0] = c.slice(n);
-                chunk = c.slice(0, n);
-                this[BUFFERLENGTH] -= n;
-            }
-            else {
-                this[BUFFER][0] = c.subarray(n);
-                chunk = c.subarray(0, n);
-                this[BUFFERLENGTH] -= n;
-            }
-        }
-        this.emit('data', chunk);
-        if (!this[BUFFER].length && !this[EOF])
-            this.emit('drain');
-        return chunk;
-    }
-    end(chunk, encoding, cb) {
-        if (typeof chunk === 'function') {
-            cb = chunk;
-            chunk = undefined;
-        }
-        if (typeof encoding === 'function') {
-            cb = encoding;
-            encoding = 'utf8';
-        }
-        if (chunk !== undefined)
-            this.write(chunk, encoding);
-        if (cb)
-            this.once('end', cb);
-        this[EOF] = true;
-        this.writable = false;
-        // if we haven't written anything, then go ahead and emit,
-        // even if we're not reading.
-        // we'll re-emit if a new 'end' listener is added anyway.
-        // This makes MP more suitable to write-only use cases.
-        if (this[FLOWING] || !this[PAUSED])
-            this[MAYBE_EMIT_END]();
-        return this;
-    }
-    // don't let the internal resume be overwritten
-    [RESUME]() {
-        if (this[DESTROYED])
+    };
+    let printACPolyfillWarning = PROCESS.env?.LRU_CACHE_IGNORE_AC_WARNING !== '1';
+    const warnACPolyfill = () => {
+        if (!printACPolyfillWarning)
             return;
-        if (!this[DATALISTENERS] && !this[PIPES].length) {
-            this[DISCARDED] = true;
+        printACPolyfillWarning = false;
+        emitWarning('AbortController is not defined. If using lru-cache in ' +
+            'node 14, load an AbortController polyfill from the ' +
+            '`node-abort-controller` package. A minimal polyfill is ' +
+            'provided for use by LRUCache.fetch(), but it should not be ' +
+            'relied upon in other contexts (eg, passing it to other APIs that ' +
+            'use AbortController/AbortSignal might have undesirable effects). ' +
+            'You may disable this with LRU_CACHE_IGNORE_AC_WARNING=1 in the env.', 'NO_ABORT_CONTROLLER', 'ENOTSUP', warnACPolyfill);
+    };
+}
+/* c8 ignore stop */
+const shouldWarn = (code) => !warned.has(code);
+const TYPE = Symbol('type');
+const isPosInt = (n) => n && n === Math.floor(n) && n > 0 && isFinite(n);
+/* c8 ignore start */
+// This is a little bit ridiculous, tbh.
+// The maximum array length is 2^32-1 or thereabouts on most JS impls.
+// And well before that point, you're caching the entire world, I mean,
+// that's ~32GB of just integers for the next/prev links, plus whatever
+// else to hold that many keys and values.  Just filling the memory with
+// zeroes at init time is brutal when you get that big.
+// But why not be complete?
+// Maybe in the future, these limits will have expanded.
+const getUintArray = (max) => !isPosInt(max)
+    ? null
+    : max <= Math.pow(2, 8)
+        ? Uint8Array
+        : max <= Math.pow(2, 16)
+            ? Uint16Array
+            : max <= Math.pow(2, 32)
+                ? Uint32Array
+                : max <= Number.MAX_SAFE_INTEGER
+                    ? ZeroArray
+                    : null;
+/* c8 ignore stop */
+class ZeroArray extends Array {
+    constructor(size) {
+        super(size);
+        this.fill(0);
+    }
+}
+class Stack {
+    heap;
+    length;
+    // private constructor
+    static #constructing = false;
+    static create(max) {
+        const HeapCls = getUintArray(max);
+        if (!HeapCls)
+            return [];
+        Stack.#constructing = true;
+        const s = new Stack(max, HeapCls);
+        Stack.#constructing = false;
+        return s;
+    }
+    constructor(max, HeapCls) {
+        /* c8 ignore start */
+        if (!Stack.#constructing) {
+            throw new TypeError('instantiate Stack using Stack.create(n)');
         }
-        this[PAUSED] = false;
-        this[FLOWING] = true;
-        this.emit('resume');
-        if (this[BUFFER].length)
-            this[FLUSH]();
-        else if (this[EOF])
-            this[MAYBE_EMIT_END]();
-        else
-            this.emit('drain');
+        /* c8 ignore stop */
+        this.heap = new HeapCls(max);
+        this.length = 0;
     }
+    push(n) {
+        this.heap[this.length++] = n;
+    }
+    pop() {
+        return this.heap[--this.length];
+    }
+}
+/**
+ * Default export, the thing you're using this module to get.
+ *
+ * The `K` and `V` types define the key and value types, respectively. The
+ * optional `FC` type defines the type of the `context` object passed to
+ * `cache.fetch()` and `cache.memo()`.
+ *
+ * Keys and values **must not** be `null` or `undefined`.
+ *
+ * All properties from the options object (with the exception of `max`,
+ * `maxSize`, `fetchMethod`, `memoMethod`, `dispose` and `disposeAfter`) are
+ * added as normal public members. (The listed options are read-only getters.)
+ *
+ * Changing any of these will alter the defaults for subsequent method calls.
+ */
+class LRUCache {
+    // options that cannot be changed without disaster
+    #max;
+    #maxSize;
+    #dispose;
+    #disposeAfter;
+    #fetchMethod;
+    #memoMethod;
     /**
-     * Resume the stream if it is currently in a paused state
+     * {@link LRUCache.OptionsBase.ttl}
+     */
+    ttl;
+    /**
+     * {@link LRUCache.OptionsBase.ttlResolution}
+     */
+    ttlResolution;
+    /**
+     * {@link LRUCache.OptionsBase.ttlAutopurge}
+     */
+    ttlAutopurge;
+    /**
+     * {@link LRUCache.OptionsBase.updateAgeOnGet}
+     */
+    updateAgeOnGet;
+    /**
+     * {@link LRUCache.OptionsBase.updateAgeOnHas}
+     */
+    updateAgeOnHas;
+    /**
+     * {@link LRUCache.OptionsBase.allowStale}
+     */
+    allowStale;
+    /**
+     * {@link LRUCache.OptionsBase.noDisposeOnSet}
+     */
+    noDisposeOnSet;
+    /**
+     * {@link LRUCache.OptionsBase.noUpdateTTL}
+     */
+    noUpdateTTL;
+    /**
+     * {@link LRUCache.OptionsBase.maxEntrySize}
+     */
+    maxEntrySize;
+    /**
+     * {@link LRUCache.OptionsBase.sizeCalculation}
+     */
+    sizeCalculation;
+    /**
+     * {@link LRUCache.OptionsBase.noDeleteOnFetchRejection}
+     */
+    noDeleteOnFetchRejection;
+    /**
+     * {@link LRUCache.OptionsBase.noDeleteOnStaleGet}
+     */
+    noDeleteOnStaleGet;
+    /**
+     * {@link LRUCache.OptionsBase.allowStaleOnFetchAbort}
+     */
+    allowStaleOnFetchAbort;
+    /**
+     * {@link LRUCache.OptionsBase.allowStaleOnFetchRejection}
+     */
+    allowStaleOnFetchRejection;
+    /**
+     * {@link LRUCache.OptionsBase.ignoreFetchAbort}
+     */
+    ignoreFetchAbort;
+    // computed properties
+    #size;
+    #calculatedSize;
+    #keyMap;
+    #keyList;
+    #valList;
+    #next;
+    #prev;
+    #head;
+    #tail;
+    #free;
+    #disposed;
+    #sizes;
+    #starts;
+    #ttls;
+    #hasDispose;
+    #hasFetchMethod;
+    #hasDisposeAfter;
+    /**
+     * Do not call this method unless you need to inspect the
+     * inner workings of the cache.  If anything returned by this
+     * object is modified in any way, strange breakage may occur.
      *
-     * If called when there are no pipe destinations or `data` event listeners,
-     * this will place the stream in a "discarded" state, where all data will
-     * be thrown away. The discarded state is removed if a pipe destination or
-     * data handler is added, if pause() is called, or if any synchronous or
-     * asynchronous iteration is started.
-     */
-    resume() {
-        return this[RESUME]();
-    }
-    /**
-     * Pause the stream
-     */
-    pause() {
-        this[FLOWING] = false;
-        this[PAUSED] = true;
-        this[DISCARDED] = false;
-    }
-    /**
-     * true if the stream has been forcibly destroyed
-     */
-    get destroyed() {
-        return this[DESTROYED];
-    }
-    /**
-     * true if the stream is currently in a flowing state, meaning that
-     * any writes will be immediately emitted.
-     */
-    get flowing() {
-        return this[FLOWING];
-    }
-    /**
-     * true if the stream is currently in a paused state
-     */
-    get paused() {
-        return this[PAUSED];
-    }
-    [BUFFERPUSH](chunk) {
-        if (this[OBJECTMODE])
-            this[BUFFERLENGTH] += 1;
-        else
-            this[BUFFERLENGTH] += chunk.length;
-        this[BUFFER].push(chunk);
-    }
-    [BUFFERSHIFT]() {
-        if (this[OBJECTMODE])
-            this[BUFFERLENGTH] -= 1;
-        else
-            this[BUFFERLENGTH] -= this[BUFFER][0].length;
-        return this[BUFFER].shift();
-    }
-    [FLUSH](noDrain = false) {
-        do { } while (this[FLUSHCHUNK](this[BUFFERSHIFT]()) &&
-            this[BUFFER].length);
-        if (!noDrain && !this[BUFFER].length && !this[EOF])
-            this.emit('drain');
-    }
-    [FLUSHCHUNK](chunk) {
-        this.emit('data', chunk);
-        return this[FLOWING];
-    }
-    /**
-     * Pipe all data emitted by this stream into the destination provided.
+     * These fields are private for a reason!
      *
-     * Triggers the flow of data.
+     * @internal
      */
-    pipe(dest, opts) {
-        if (this[DESTROYED])
-            return dest;
-        this[DISCARDED] = false;
-        const ended = this[EMITTED_END];
-        opts = opts || {};
-        if (dest === proc.stdout || dest === proc.stderr)
-            opts.end = false;
-        else
-            opts.end = opts.end !== false;
-        opts.proxyErrors = !!opts.proxyErrors;
-        // piping an ended stream ends immediately
-        if (ended) {
-            if (opts.end)
-                dest.end();
+    static unsafeExposeInternals(c) {
+        return {
+            // properties
+            starts: c.#starts,
+            ttls: c.#ttls,
+            sizes: c.#sizes,
+            keyMap: c.#keyMap,
+            keyList: c.#keyList,
+            valList: c.#valList,
+            next: c.#next,
+            prev: c.#prev,
+            get head() {
+                return c.#head;
+            },
+            get tail() {
+                return c.#tail;
+            },
+            free: c.#free,
+            // methods
+            isBackgroundFetch: (p) => c.#isBackgroundFetch(p),
+            backgroundFetch: (k, index, options, context) => c.#backgroundFetch(k, index, options, context),
+            moveToTail: (index) => c.#moveToTail(index),
+            indexes: (options) => c.#indexes(options),
+            rindexes: (options) => c.#rindexes(options),
+            isStale: (index) => c.#isStale(index),
+        };
+    }
+    // Protected read-only members
+    /**
+     * {@link LRUCache.OptionsBase.max} (read-only)
+     */
+    get max() {
+        return this.#max;
+    }
+    /**
+     * {@link LRUCache.OptionsBase.maxSize} (read-only)
+     */
+    get maxSize() {
+        return this.#maxSize;
+    }
+    /**
+     * The total computed size of items in the cache (read-only)
+     */
+    get calculatedSize() {
+        return this.#calculatedSize;
+    }
+    /**
+     * The number of items stored in the cache (read-only)
+     */
+    get size() {
+        return this.#size;
+    }
+    /**
+     * {@link LRUCache.OptionsBase.fetchMethod} (read-only)
+     */
+    get fetchMethod() {
+        return this.#fetchMethod;
+    }
+    get memoMethod() {
+        return this.#memoMethod;
+    }
+    /**
+     * {@link LRUCache.OptionsBase.dispose} (read-only)
+     */
+    get dispose() {
+        return this.#dispose;
+    }
+    /**
+     * {@link LRUCache.OptionsBase.disposeAfter} (read-only)
+     */
+    get disposeAfter() {
+        return this.#disposeAfter;
+    }
+    constructor(options) {
+        const { max = 0, ttl, ttlResolution = 1, ttlAutopurge, updateAgeOnGet, updateAgeOnHas, allowStale, dispose, disposeAfter, noDisposeOnSet, noUpdateTTL, maxSize = 0, maxEntrySize = 0, sizeCalculation, fetchMethod, memoMethod, noDeleteOnFetchRejection, noDeleteOnStaleGet, allowStaleOnFetchRejection, allowStaleOnFetchAbort, ignoreFetchAbort, } = options;
+        if (max !== 0 && !isPosInt(max)) {
+            throw new TypeError('max option must be a nonnegative integer');
+        }
+        const UintArray = max ? getUintArray(max) : Array;
+        if (!UintArray) {
+            throw new Error('invalid max value: ' + max);
+        }
+        this.#max = max;
+        this.#maxSize = maxSize;
+        this.maxEntrySize = maxEntrySize || this.#maxSize;
+        this.sizeCalculation = sizeCalculation;
+        if (this.sizeCalculation) {
+            if (!this.#maxSize && !this.maxEntrySize) {
+                throw new TypeError('cannot set sizeCalculation without setting maxSize or maxEntrySize');
+            }
+            if (typeof this.sizeCalculation !== 'function') {
+                throw new TypeError('sizeCalculation set to non-function');
+            }
+        }
+        if (memoMethod !== undefined &&
+            typeof memoMethod !== 'function') {
+            throw new TypeError('memoMethod must be a function if defined');
+        }
+        this.#memoMethod = memoMethod;
+        if (fetchMethod !== undefined &&
+            typeof fetchMethod !== 'function') {
+            throw new TypeError('fetchMethod must be a function if specified');
+        }
+        this.#fetchMethod = fetchMethod;
+        this.#hasFetchMethod = !!fetchMethod;
+        this.#keyMap = new Map();
+        this.#keyList = new Array(max).fill(undefined);
+        this.#valList = new Array(max).fill(undefined);
+        this.#next = new UintArray(max);
+        this.#prev = new UintArray(max);
+        this.#head = 0;
+        this.#tail = 0;
+        this.#free = Stack.create(max);
+        this.#size = 0;
+        this.#calculatedSize = 0;
+        if (typeof dispose === 'function') {
+            this.#dispose = dispose;
+        }
+        if (typeof disposeAfter === 'function') {
+            this.#disposeAfter = disposeAfter;
+            this.#disposed = [];
         }
         else {
-            // "as" here just ignores the WType, which pipes don't care about,
-            // since they're only consuming from us, and writing to the dest
-            this[PIPES].push(!opts.proxyErrors
-                ? new Pipe(this, dest, opts)
-                : new PipeProxyErrors(this, dest, opts));
-            if (this[ASYNC])
-                defer(() => this[RESUME]());
-            else
-                this[RESUME]();
+            this.#disposeAfter = undefined;
+            this.#disposed = undefined;
         }
-        return dest;
-    }
-    /**
-     * Fully unhook a piped destination stream.
-     *
-     * If the destination stream was the only consumer of this stream (ie,
-     * there are no other piped destinations or `'data'` event listeners)
-     * then the flow of data will stop until there is another consumer or
-     * {@link Minipass#resume} is explicitly called.
-     */
-    unpipe(dest) {
-        const p = this[PIPES].find(p => p.dest === dest);
-        if (p) {
-            if (this[PIPES].length === 1) {
-                if (this[FLOWING] && this[DATALISTENERS] === 0) {
-                    this[FLOWING] = false;
+        this.#hasDispose = !!this.#dispose;
+        this.#hasDisposeAfter = !!this.#disposeAfter;
+        this.noDisposeOnSet = !!noDisposeOnSet;
+        this.noUpdateTTL = !!noUpdateTTL;
+        this.noDeleteOnFetchRejection = !!noDeleteOnFetchRejection;
+        this.allowStaleOnFetchRejection = !!allowStaleOnFetchRejection;
+        this.allowStaleOnFetchAbort = !!allowStaleOnFetchAbort;
+        this.ignoreFetchAbort = !!ignoreFetchAbort;
+        // NB: maxEntrySize is set to maxSize if it's set
+        if (this.maxEntrySize !== 0) {
+            if (this.#maxSize !== 0) {
+                if (!isPosInt(this.#maxSize)) {
+                    throw new TypeError('maxSize must be a positive integer if specified');
                 }
-                this[PIPES] = [];
             }
-            else
-                this[PIPES].splice(this[PIPES].indexOf(p), 1);
-            p.unpipe();
+            if (!isPosInt(this.maxEntrySize)) {
+                throw new TypeError('maxEntrySize must be a positive integer if specified');
+            }
+            this.#initializeSizeTracking();
         }
-    }
-    /**
-     * Alias for {@link Minipass#on}
-     */
-    addListener(ev, handler) {
-        return this.on(ev, handler);
-    }
-    /**
-     * Mostly identical to `EventEmitter.on`, with the following
-     * behavior differences to prevent data loss and unnecessary hangs:
-     *
-     * - Adding a 'data' event handler will trigger the flow of data
-     *
-     * - Adding a 'readable' event handler when there is data waiting to be read
-     *   will cause 'readable' to be emitted immediately.
-     *
-     * - Adding an 'endish' event handler ('end', 'finish', etc.) which has
-     *   already passed will cause the event to be emitted immediately and all
-     *   handlers removed.
-     *
-     * - Adding an 'error' event handler after an error has been emitted will
-     *   cause the event to be re-emitted immediately with the error previously
-     *   raised.
-     */
-    on(ev, handler) {
-        const ret = super.on(ev, handler);
-        if (ev === 'data') {
-            this[DISCARDED] = false;
-            this[DATALISTENERS]++;
-            if (!this[PIPES].length && !this[FLOWING]) {
-                this[RESUME]();
+        this.allowStale = !!allowStale;
+        this.noDeleteOnStaleGet = !!noDeleteOnStaleGet;
+        this.updateAgeOnGet = !!updateAgeOnGet;
+        this.updateAgeOnHas = !!updateAgeOnHas;
+        this.ttlResolution =
+            isPosInt(ttlResolution) || ttlResolution === 0
+                ? ttlResolution
+                : 1;
+        this.ttlAutopurge = !!ttlAutopurge;
+        this.ttl = ttl || 0;
+        if (this.ttl) {
+            if (!isPosInt(this.ttl)) {
+                throw new TypeError('ttl must be a positive integer if specified');
+            }
+            this.#initializeTTLTracking();
+        }
+        // do not allow completely unbounded caches
+        if (this.#max === 0 && this.ttl === 0 && this.#maxSize === 0) {
+            throw new TypeError('At least one of max, maxSize, or ttl is required');
+        }
+        if (!this.ttlAutopurge && !this.#max && !this.#maxSize) {
+            const code = 'LRU_CACHE_UNBOUNDED';
+            if (shouldWarn(code)) {
+                warned.add(code);
+                const msg = 'TTL caching without ttlAutopurge, max, or maxSize can ' +
+                    'result in unbounded memory consumption.';
+                emitWarning(msg, 'UnboundedCacheWarning', code, LRUCache);
             }
         }
-        else if (ev === 'readable' && this[BUFFERLENGTH] !== 0) {
-            super.emit('readable');
-        }
-        else if (isEndish(ev) && this[EMITTED_END]) {
-            super.emit(ev);
-            this.removeAllListeners(ev);
-        }
-        else if (ev === 'error' && this[EMITTED_ERROR]) {
-            const h = handler;
-            if (this[ASYNC])
-                defer(() => h.call(this, this[EMITTED_ERROR]));
-            else
-                h.call(this, this[EMITTED_ERROR]);
-        }
-        return ret;
     }
     /**
-     * Alias for {@link Minipass#off}
+     * Return the number of ms left in the item's TTL. If item is not in cache,
+     * returns `0`. Returns `Infinity` if item is in cache without a defined TTL.
      */
-    removeListener(ev, handler) {
-        return this.off(ev, handler);
+    getRemainingTTL(key) {
+        return this.#keyMap.has(key) ? Infinity : 0;
     }
-    /**
-     * Mostly identical to `EventEmitter.off`
-     *
-     * If a 'data' event handler is removed, and it was the last consumer
-     * (ie, there are no pipe destinations or other 'data' event listeners),
-     * then the flow of data will stop until there is another consumer or
-     * {@link Minipass#resume} is explicitly called.
-     */
-    off(ev, handler) {
-        const ret = super.off(ev, handler);
-        // if we previously had listeners, and now we don't, and we don't
-        // have any pipes, then stop the flow, unless it's been explicitly
-        // put in a discarded flowing state via stream.resume().
-        if (ev === 'data') {
-            this[DATALISTENERS] = this.listeners('data').length;
-            if (this[DATALISTENERS] === 0 &&
-                !this[DISCARDED] &&
-                !this[PIPES].length) {
-                this[FLOWING] = false;
-            }
-        }
-        return ret;
-    }
-    /**
-     * Mostly identical to `EventEmitter.removeAllListeners`
-     *
-     * If all 'data' event handlers are removed, and they were the last consumer
-     * (ie, there are no pipe destinations), then the flow of data will stop
-     * until there is another consumer or {@link Minipass#resume} is explicitly
-     * called.
-     */
-    removeAllListeners(ev) {
-        const ret = super.removeAllListeners(ev);
-        if (ev === 'data' || ev === undefined) {
-            this[DATALISTENERS] = 0;
-            if (!this[DISCARDED] && !this[PIPES].length) {
-                this[FLOWING] = false;
-            }
-        }
-        return ret;
-    }
-    /**
-     * true if the 'end' event has been emitted
-     */
-    get emittedEnd() {
-        return this[EMITTED_END];
-    }
-    [MAYBE_EMIT_END]() {
-        if (!this[EMITTING_END] &&
-            !this[EMITTED_END] &&
-            !this[DESTROYED] &&
-            this[BUFFER].length === 0 &&
-            this[EOF]) {
-            this[EMITTING_END] = true;
-            this.emit('end');
-            this.emit('prefinish');
-            this.emit('finish');
-            if (this[CLOSED])
-                this.emit('close');
-            this[EMITTING_END] = false;
-        }
-    }
-    /**
-     * Mostly identical to `EventEmitter.emit`, with the following
-     * behavior differences to prevent data loss and unnecessary hangs:
-     *
-     * If the stream has been destroyed, and the event is something other
-     * than 'close' or 'error', then `false` is returned and no handlers
-     * are called.
-     *
-     * If the event is 'end', and has already been emitted, then the event
-     * is ignored. If the stream is in a paused or non-flowing state, then
-     * the event will be deferred until data flow resumes. If the stream is
-     * async, then handlers will be called on the next tick rather than
-     * immediately.
-     *
-     * If the event is 'close', and 'end' has not yet been emitted, then
-     * the event will be deferred until after 'end' is emitted.
-     *
-     * If the event is 'error', and an AbortSignal was provided for the stream,
-     * and there are no listeners, then the event is ignored, matching the
-     * behavior of node core streams in the presense of an AbortSignal.
-     *
-     * If the event is 'finish' or 'prefinish', then all listeners will be
-     * removed after emitting the event, to prevent double-firing.
-     */
-    emit(ev, ...args) {
-        const data = args[0];
-        // error and close are only events allowed after calling destroy()
-        if (ev !== 'error' &&
-            ev !== 'close' &&
-            ev !== DESTROYED &&
-            this[DESTROYED]) {
-            return false;
-        }
-        else if (ev === 'data') {
-            return !this[OBJECTMODE] && !data
-                ? false
-                : this[ASYNC]
-                    ? (defer(() => this[EMITDATA](data)), true)
-                    : this[EMITDATA](data);
-        }
-        else if (ev === 'end') {
-            return this[EMITEND]();
-        }
-        else if (ev === 'close') {
-            this[CLOSED] = true;
-            // don't emit close before 'end' and 'finish'
-            if (!this[EMITTED_END] && !this[DESTROYED])
-                return false;
-            const ret = super.emit('close');
-            this.removeAllListeners('close');
-            return ret;
-        }
-        else if (ev === 'error') {
-            this[EMITTED_ERROR] = data;
-            super.emit(ERROR, data);
-            const ret = !this[SIGNAL] || this.listeners('error').length
-                ? super.emit('error', data)
-                : false;
-            this[MAYBE_EMIT_END]();
-            return ret;
-        }
-        else if (ev === 'resume') {
-            const ret = super.emit('resume');
-            this[MAYBE_EMIT_END]();
-            return ret;
-        }
-        else if (ev === 'finish' || ev === 'prefinish') {
-            const ret = super.emit(ev);
-            this.removeAllListeners(ev);
-            return ret;
-        }
-        // Some other unknown event
-        const ret = super.emit(ev, ...args);
-        this[MAYBE_EMIT_END]();
-        return ret;
-    }
-    [EMITDATA](data) {
-        for (const p of this[PIPES]) {
-            if (p.dest.write(data) === false)
-                this.pause();
-        }
-        const ret = this[DISCARDED] ? false : super.emit('data', data);
-        this[MAYBE_EMIT_END]();
-        return ret;
-    }
-    [EMITEND]() {
-        if (this[EMITTED_END])
-            return false;
-        this[EMITTED_END] = true;
-        this.readable = false;
-        return this[ASYNC]
-            ? (defer(() => this[EMITEND2]()), true)
-            : this[EMITEND2]();
-    }
-    [EMITEND2]() {
-        if (this[DECODER]) {
-            const data = this[DECODER].end();
-            if (data) {
-                for (const p of this[PIPES]) {
-                    p.dest.write(data);
+    #initializeTTLTracking() {
+        const ttls = new ZeroArray(this.#max);
+        const starts = new ZeroArray(this.#max);
+        this.#ttls = ttls;
+        this.#starts = starts;
+        this.#setItemTTL = (index, ttl, start = perf.now()) => {
+            starts[index] = ttl !== 0 ? start : 0;
+            ttls[index] = ttl;
+            if (ttl !== 0 && this.ttlAutopurge) {
+                const t = setTimeout(() => {
+                    if (this.#isStale(index)) {
+                        this.#delete(this.#keyList[index], 'expire');
+                    }
+                }, ttl + 1);
+                // unref() not supported on all platforms
+                /* c8 ignore start */
+                if (t.unref) {
+                    t.unref();
                 }
-                if (!this[DISCARDED])
-                    super.emit('data', data);
+                /* c8 ignore stop */
+            }
+        };
+        this.#updateItemAge = index => {
+            starts[index] = ttls[index] !== 0 ? perf.now() : 0;
+        };
+        this.#statusTTL = (status, index) => {
+            if (ttls[index]) {
+                const ttl = ttls[index];
+                const start = starts[index];
+                /* c8 ignore next */
+                if (!ttl || !start)
+                    return;
+                status.ttl = ttl;
+                status.start = start;
+                status.now = cachedNow || getNow();
+                const age = status.now - start;
+                status.remainingTTL = ttl - age;
+            }
+        };
+        // debounce calls to perf.now() to 1s so we're not hitting
+        // that costly call repeatedly.
+        let cachedNow = 0;
+        const getNow = () => {
+            const n = perf.now();
+            if (this.ttlResolution > 0) {
+                cachedNow = n;
+                const t = setTimeout(() => (cachedNow = 0), this.ttlResolution);
+                // not available on all platforms
+                /* c8 ignore start */
+                if (t.unref) {
+                    t.unref();
+                }
+                /* c8 ignore stop */
+            }
+            return n;
+        };
+        this.getRemainingTTL = key => {
+            const index = this.#keyMap.get(key);
+            if (index === undefined) {
+                return 0;
+            }
+            const ttl = ttls[index];
+            const start = starts[index];
+            if (!ttl || !start) {
+                return Infinity;
+            }
+            const age = (cachedNow || getNow()) - start;
+            return ttl - age;
+        };
+        this.#isStale = index => {
+            const s = starts[index];
+            const t = ttls[index];
+            return !!t && !!s && (cachedNow || getNow()) - s > t;
+        };
+    }
+    // conditionally set private methods related to TTL
+    #updateItemAge = () => { };
+    #statusTTL = () => { };
+    #setItemTTL = () => { };
+    /* c8 ignore stop */
+    #isStale = () => false;
+    #initializeSizeTracking() {
+        const sizes = new ZeroArray(this.#max);
+        this.#calculatedSize = 0;
+        this.#sizes = sizes;
+        this.#removeItemSize = index => {
+            this.#calculatedSize -= sizes[index];
+            sizes[index] = 0;
+        };
+        this.#requireSize = (k, v, size, sizeCalculation) => {
+            // provisionally accept background fetches.
+            // actual value size will be checked when they return.
+            if (this.#isBackgroundFetch(v)) {
+                return 0;
+            }
+            if (!isPosInt(size)) {
+                if (sizeCalculation) {
+                    if (typeof sizeCalculation !== 'function') {
+                        throw new TypeError('sizeCalculation must be a function');
+                    }
+                    size = sizeCalculation(v, k);
+                    if (!isPosInt(size)) {
+                        throw new TypeError('sizeCalculation return invalid (expect positive integer)');
+                    }
+                }
+                else {
+                    throw new TypeError('invalid size value (must be positive integer). ' +
+                        'When maxSize or maxEntrySize is used, sizeCalculation ' +
+                        'or size must be set.');
+                }
+            }
+            return size;
+        };
+        this.#addItemSize = (index, size, status) => {
+            sizes[index] = size;
+            if (this.#maxSize) {
+                const maxSize = this.#maxSize - sizes[index];
+                while (this.#calculatedSize > maxSize) {
+                    this.#evict(true);
+                }
+            }
+            this.#calculatedSize += sizes[index];
+            if (status) {
+                status.entrySize = size;
+                status.totalCalculatedSize = this.#calculatedSize;
+            }
+        };
+    }
+    #removeItemSize = _i => { };
+    #addItemSize = (_i, _s, _st) => { };
+    #requireSize = (_k, _v, size, sizeCalculation) => {
+        if (size || sizeCalculation) {
+            throw new TypeError('cannot set size without setting maxSize or maxEntrySize on cache');
+        }
+        return 0;
+    };
+    *#indexes({ allowStale = this.allowStale } = {}) {
+        if (this.#size) {
+            for (let i = this.#tail; true;) {
+                if (!this.#isValidIndex(i)) {
+                    break;
+                }
+                if (allowStale || !this.#isStale(i)) {
+                    yield i;
+                }
+                if (i === this.#head) {
+                    break;
+                }
+                else {
+                    i = this.#prev[i];
+                }
             }
         }
-        for (const p of this[PIPES]) {
-            p.end();
+    }
+    *#rindexes({ allowStale = this.allowStale } = {}) {
+        if (this.#size) {
+            for (let i = this.#head; true;) {
+                if (!this.#isValidIndex(i)) {
+                    break;
+                }
+                if (allowStale || !this.#isStale(i)) {
+                    yield i;
+                }
+                if (i === this.#tail) {
+                    break;
+                }
+                else {
+                    i = this.#next[i];
+                }
+            }
         }
-        const ret = super.emit('end');
-        this.removeAllListeners('end');
-        return ret;
+    }
+    #isValidIndex(index) {
+        return (index !== undefined &&
+            this.#keyMap.get(this.#keyList[index]) === index);
     }
     /**
-     * Return a Promise that resolves to an array of all emitted data once
-     * the stream ends.
+     * Return a generator yielding `[key, value]` pairs,
+     * in order from most recently used to least recently used.
      */
-    async collect() {
-        const buf = Object.assign([], {
-            dataLength: 0,
-        });
-        if (!this[OBJECTMODE])
-            buf.dataLength = 0;
-        // set the promise first, in case an error is raised
-        // by triggering the flow here.
-        const p = this.promise();
-        this.on('data', c => {
-            buf.push(c);
-            if (!this[OBJECTMODE])
-                buf.dataLength += c.length;
-        });
-        await p;
-        return buf;
-    }
-    /**
-     * Return a Promise that resolves to the concatenation of all emitted data
-     * once the stream ends.
-     *
-     * Not allowed on objectMode streams.
-     */
-    async concat() {
-        if (this[OBJECTMODE]) {
-            throw new Error('cannot concat in objectMode');
+    *entries() {
+        for (const i of this.#indexes()) {
+            if (this.#valList[i] !== undefined &&
+                this.#keyList[i] !== undefined &&
+                !this.#isBackgroundFetch(this.#valList[i])) {
+                yield [this.#keyList[i], this.#valList[i]];
+            }
         }
-        const buf = await this.collect();
-        return (this[ENCODING]
-            ? buf.join('')
-            : Buffer.concat(buf, buf.dataLength));
     }
     /**
-     * Return a void Promise that resolves once the stream ends.
-     */
-    async promise() {
-        return new Promise((resolve, reject) => {
-            this.on(DESTROYED, () => reject(new Error('stream destroyed')));
-            this.on('error', er => reject(er));
-            this.on('end', () => resolve());
-        });
-    }
-    /**
-     * Asynchronous `for await of` iteration.
+     * Inverse order version of {@link LRUCache.entries}
      *
-     * This will continue emitting all chunks until the stream terminates.
+     * Return a generator yielding `[key, value]` pairs,
+     * in order from least recently used to most recently used.
      */
-    [Symbol.asyncIterator]() {
-        // set this up front, in case the consumer doesn't call next()
-        // right away.
-        this[DISCARDED] = false;
-        let stopped = false;
-        const stop = async () => {
-            this.pause();
-            stopped = true;
-            return { value: undefined, done: true };
-        };
-        const next = () => {
-            if (stopped)
-                return stop();
-            const res = this.read();
-            if (res !== null)
-                return Promise.resolve({ done: false, value: res });
-            if (this[EOF])
-                return stop();
-            let resolve;
-            let reject;
-            const onerr = (er) => {
-                this.off('data', ondata);
-                this.off('end', onend);
-                this.off(DESTROYED, ondestroy);
-                stop();
-                reject(er);
-            };
-            const ondata = (value) => {
-                this.off('error', onerr);
-                this.off('end', onend);
-                this.off(DESTROYED, ondestroy);
-                this.pause();
-                resolve({ value, done: !!this[EOF] });
-            };
-            const onend = () => {
-                this.off('error', onerr);
-                this.off('data', ondata);
-                this.off(DESTROYED, ondestroy);
-                stop();
-                resolve({ done: true, value: undefined });
-            };
-            const ondestroy = () => onerr(new Error('stream destroyed'));
-            return new Promise((res, rej) => {
-                reject = rej;
-                resolve = res;
-                this.once(DESTROYED, ondestroy);
-                this.once('error', onerr);
-                this.once('end', onend);
-                this.once('data', ondata);
-            });
-        };
-        return {
-            next,
-            throw: stop,
-            return: stop,
-            [Symbol.asyncIterator]() {
-                return this;
-            },
-        };
+    *rentries() {
+        for (const i of this.#rindexes()) {
+            if (this.#valList[i] !== undefined &&
+                this.#keyList[i] !== undefined &&
+                !this.#isBackgroundFetch(this.#valList[i])) {
+                yield [this.#keyList[i], this.#valList[i]];
+            }
+        }
     }
     /**
-     * Synchronous `for of` iteration.
+     * Return a generator yielding the keys in the cache,
+     * in order from most recently used to least recently used.
+     */
+    *keys() {
+        for (const i of this.#indexes()) {
+            const k = this.#keyList[i];
+            if (k !== undefined &&
+                !this.#isBackgroundFetch(this.#valList[i])) {
+                yield k;
+            }
+        }
+    }
+    /**
+     * Inverse order version of {@link LRUCache.keys}
      *
-     * The iteration will terminate when the internal buffer runs out, even
-     * if the stream has not yet terminated.
+     * Return a generator yielding the keys in the cache,
+     * in order from least recently used to most recently used.
+     */
+    *rkeys() {
+        for (const i of this.#rindexes()) {
+            const k = this.#keyList[i];
+            if (k !== undefined &&
+                !this.#isBackgroundFetch(this.#valList[i])) {
+                yield k;
+            }
+        }
+    }
+    /**
+     * Return a generator yielding the values in the cache,
+     * in order from most recently used to least recently used.
+     */
+    *values() {
+        for (const i of this.#indexes()) {
+            const v = this.#valList[i];
+            if (v !== undefined &&
+                !this.#isBackgroundFetch(this.#valList[i])) {
+                yield this.#valList[i];
+            }
+        }
+    }
+    /**
+     * Inverse order version of {@link LRUCache.values}
+     *
+     * Return a generator yielding the values in the cache,
+     * in order from least recently used to most recently used.
+     */
+    *rvalues() {
+        for (const i of this.#rindexes()) {
+            const v = this.#valList[i];
+            if (v !== undefined &&
+                !this.#isBackgroundFetch(this.#valList[i])) {
+                yield this.#valList[i];
+            }
+        }
+    }
+    /**
+     * Iterating over the cache itself yields the same results as
+     * {@link LRUCache.entries}
      */
     [Symbol.iterator]() {
-        // set this up front, in case the consumer doesn't call next()
-        // right away.
-        this[DISCARDED] = false;
-        let stopped = false;
-        const stop = () => {
-            this.pause();
-            this.off(ERROR, stop);
-            this.off(DESTROYED, stop);
-            this.off('end', stop);
-            stopped = true;
-            return { done: true, value: undefined };
-        };
-        const next = () => {
-            if (stopped)
-                return stop();
-            const value = this.read();
-            return value === null ? stop() : { done: false, value };
-        };
-        this.once('end', stop);
-        this.once(ERROR, stop);
-        this.once(DESTROYED, stop);
-        return {
-            next,
-            throw: stop,
-            return: stop,
-            [Symbol.iterator]() {
-                return this;
-            },
-        };
+        return this.entries();
     }
     /**
-     * Destroy a stream, preventing it from being used for any further purpose.
-     *
-     * If the stream has a `close()` method, then it will be called on
-     * destruction.
-     *
-     * After destruction, any attempt to write data, read data, or emit most
-     * events will be ignored.
-     *
-     * If an error argument is provided, then it will be emitted in an
-     * 'error' event.
+     * A String value that is used in the creation of the default string
+     * description of an object. Called by the built-in method
+     * `Object.prototype.toString`.
      */
-    destroy(er) {
-        if (this[DESTROYED]) {
-            if (er)
-                this.emit('error', er);
-            else
-                this.emit(DESTROYED);
+    [Symbol.toStringTag] = 'LRUCache';
+    /**
+     * Find a value for which the supplied fn method returns a truthy value,
+     * similar to `Array.find()`. fn is called as `fn(value, key, cache)`.
+     */
+    find(fn, getOptions = {}) {
+        for (const i of this.#indexes()) {
+            const v = this.#valList[i];
+            const value = this.#isBackgroundFetch(v)
+                ? v.__staleWhileFetching
+                : v;
+            if (value === undefined)
+                continue;
+            if (fn(value, this.#keyList[i], this)) {
+                return this.get(this.#keyList[i], getOptions);
+            }
+        }
+    }
+    /**
+     * Call the supplied function on each item in the cache, in order from most
+     * recently used to least recently used.
+     *
+     * `fn` is called as `fn(value, key, cache)`.
+     *
+     * If `thisp` is provided, function will be called in the `this`-context of
+     * the provided object, or the cache if no `thisp` object is provided.
+     *
+     * Does not update age or recenty of use, or iterate over stale values.
+     */
+    forEach(fn, thisp = this) {
+        for (const i of this.#indexes()) {
+            const v = this.#valList[i];
+            const value = this.#isBackgroundFetch(v)
+                ? v.__staleWhileFetching
+                : v;
+            if (value === undefined)
+                continue;
+            fn.call(thisp, value, this.#keyList[i], this);
+        }
+    }
+    /**
+     * The same as {@link LRUCache.forEach} but items are iterated over in
+     * reverse order.  (ie, less recently used items are iterated over first.)
+     */
+    rforEach(fn, thisp = this) {
+        for (const i of this.#rindexes()) {
+            const v = this.#valList[i];
+            const value = this.#isBackgroundFetch(v)
+                ? v.__staleWhileFetching
+                : v;
+            if (value === undefined)
+                continue;
+            fn.call(thisp, value, this.#keyList[i], this);
+        }
+    }
+    /**
+     * Delete any stale entries. Returns true if anything was removed,
+     * false otherwise.
+     */
+    purgeStale() {
+        let deleted = false;
+        for (const i of this.#rindexes({ allowStale: true })) {
+            if (this.#isStale(i)) {
+                this.#delete(this.#keyList[i], 'expire');
+                deleted = true;
+            }
+        }
+        return deleted;
+    }
+    /**
+     * Get the extended info about a given entry, to get its value, size, and
+     * TTL info simultaneously. Returns `undefined` if the key is not present.
+     *
+     * Unlike {@link LRUCache#dump}, which is designed to be portable and survive
+     * serialization, the `start` value is always the current timestamp, and the
+     * `ttl` is a calculated remaining time to live (negative if expired).
+     *
+     * Always returns stale values, if their info is found in the cache, so be
+     * sure to check for expirations (ie, a negative {@link LRUCache.Entry#ttl})
+     * if relevant.
+     */
+    info(key) {
+        const i = this.#keyMap.get(key);
+        if (i === undefined)
+            return undefined;
+        const v = this.#valList[i];
+        const value = this.#isBackgroundFetch(v)
+            ? v.__staleWhileFetching
+            : v;
+        if (value === undefined)
+            return undefined;
+        const entry = { value };
+        if (this.#ttls && this.#starts) {
+            const ttl = this.#ttls[i];
+            const start = this.#starts[i];
+            if (ttl && start) {
+                const remain = ttl - (perf.now() - start);
+                entry.ttl = remain;
+                entry.start = Date.now();
+            }
+        }
+        if (this.#sizes) {
+            entry.size = this.#sizes[i];
+        }
+        return entry;
+    }
+    /**
+     * Return an array of [key, {@link LRUCache.Entry}] tuples which can be
+     * passed to {@link LRLUCache#load}.
+     *
+     * The `start` fields are calculated relative to a portable `Date.now()`
+     * timestamp, even if `performance.now()` is available.
+     *
+     * Stale entries are always included in the `dump`, even if
+     * {@link LRUCache.OptionsBase.allowStale} is false.
+     *
+     * Note: this returns an actual array, not a generator, so it can be more
+     * easily passed around.
+     */
+    dump() {
+        const arr = [];
+        for (const i of this.#indexes({ allowStale: true })) {
+            const key = this.#keyList[i];
+            const v = this.#valList[i];
+            const value = this.#isBackgroundFetch(v)
+                ? v.__staleWhileFetching
+                : v;
+            if (value === undefined || key === undefined)
+                continue;
+            const entry = { value };
+            if (this.#ttls && this.#starts) {
+                entry.ttl = this.#ttls[i];
+                // always dump the start relative to a portable timestamp
+                // it's ok for this to be a bit slow, it's a rare operation.
+                const age = perf.now() - this.#starts[i];
+                entry.start = Math.floor(Date.now() - age);
+            }
+            if (this.#sizes) {
+                entry.size = this.#sizes[i];
+            }
+            arr.unshift([key, entry]);
+        }
+        return arr;
+    }
+    /**
+     * Reset the cache and load in the items in entries in the order listed.
+     *
+     * The shape of the resulting cache may be different if the same options are
+     * not used in both caches.
+     *
+     * The `start` fields are assumed to be calculated relative to a portable
+     * `Date.now()` timestamp, even if `performance.now()` is available.
+     */
+    load(arr) {
+        this.clear();
+        for (const [key, entry] of arr) {
+            if (entry.start) {
+                // entry.start is a portable timestamp, but we may be using
+                // node's performance.now(), so calculate the offset, so that
+                // we get the intended remaining TTL, no matter how long it's
+                // been on ice.
+                //
+                // it's ok for this to be a bit slow, it's a rare operation.
+                const age = Date.now() - entry.start;
+                entry.start = perf.now() - age;
+            }
+            this.set(key, entry.value, entry);
+        }
+    }
+    /**
+     * Add a value to the cache.
+     *
+     * Note: if `undefined` is specified as a value, this is an alias for
+     * {@link LRUCache#delete}
+     *
+     * Fields on the {@link LRUCache.SetOptions} options param will override
+     * their corresponding values in the constructor options for the scope
+     * of this single `set()` operation.
+     *
+     * If `start` is provided, then that will set the effective start
+     * time for the TTL calculation. Note that this must be a previous
+     * value of `performance.now()` if supported, or a previous value of
+     * `Date.now()` if not.
+     *
+     * Options object may also include `size`, which will prevent
+     * calling the `sizeCalculation` function and just use the specified
+     * number if it is a positive integer, and `noDisposeOnSet` which
+     * will prevent calling a `dispose` function in the case of
+     * overwrites.
+     *
+     * If the `size` (or return value of `sizeCalculation`) for a given
+     * entry is greater than `maxEntrySize`, then the item will not be
+     * added to the cache.
+     *
+     * Will update the recency of the entry.
+     *
+     * If the value is `undefined`, then this is an alias for
+     * `cache.delete(key)`. `undefined` is never stored in the cache.
+     */
+    set(k, v, setOptions = {}) {
+        if (v === undefined) {
+            this.delete(k);
             return this;
         }
-        this[DESTROYED] = true;
-        this[DISCARDED] = true;
-        // throw away all buffered data, it's never coming out
-        this[BUFFER].length = 0;
-        this[BUFFERLENGTH] = 0;
-        const wc = this;
-        if (typeof wc.close === 'function' && !this[CLOSED])
-            wc.close();
-        if (er)
-            this.emit('error', er);
-        // if no error to emit, still reject pending promises
-        else
-            this.emit(DESTROYED);
+        const { ttl = this.ttl, start, noDisposeOnSet = this.noDisposeOnSet, sizeCalculation = this.sizeCalculation, status, } = setOptions;
+        let { noUpdateTTL = this.noUpdateTTL } = setOptions;
+        const size = this.#requireSize(k, v, setOptions.size || 0, sizeCalculation);
+        // if the item doesn't fit, don't do anything
+        // NB: maxEntrySize set to maxSize by default
+        if (this.maxEntrySize && size > this.maxEntrySize) {
+            if (status) {
+                status.set = 'miss';
+                status.maxEntrySizeExceeded = true;
+            }
+            // have to delete, in case something is there already.
+            this.#delete(k, 'set');
+            return this;
+        }
+        let index = this.#size === 0 ? undefined : this.#keyMap.get(k);
+        if (index === undefined) {
+            // addition
+            index = (this.#size === 0
+                ? this.#tail
+                : this.#free.length !== 0
+                    ? this.#free.pop()
+                    : this.#size === this.#max
+                        ? this.#evict(false)
+                        : this.#size);
+            this.#keyList[index] = k;
+            this.#valList[index] = v;
+            this.#keyMap.set(k, index);
+            this.#next[this.#tail] = index;
+            this.#prev[index] = this.#tail;
+            this.#tail = index;
+            this.#size++;
+            this.#addItemSize(index, size, status);
+            if (status)
+                status.set = 'add';
+            noUpdateTTL = false;
+        }
+        else {
+            // update
+            this.#moveToTail(index);
+            const oldVal = this.#valList[index];
+            if (v !== oldVal) {
+                if (this.#hasFetchMethod && this.#isBackgroundFetch(oldVal)) {
+                    oldVal.__abortController.abort(new Error('replaced'));
+                    const { __staleWhileFetching: s } = oldVal;
+                    if (s !== undefined && !noDisposeOnSet) {
+                        if (this.#hasDispose) {
+                            this.#dispose?.(s, k, 'set');
+                        }
+                        if (this.#hasDisposeAfter) {
+                            this.#disposed?.push([s, k, 'set']);
+                        }
+                    }
+                }
+                else if (!noDisposeOnSet) {
+                    if (this.#hasDispose) {
+                        this.#dispose?.(oldVal, k, 'set');
+                    }
+                    if (this.#hasDisposeAfter) {
+                        this.#disposed?.push([oldVal, k, 'set']);
+                    }
+                }
+                this.#removeItemSize(index);
+                this.#addItemSize(index, size, status);
+                this.#valList[index] = v;
+                if (status) {
+                    status.set = 'replace';
+                    const oldValue = oldVal && this.#isBackgroundFetch(oldVal)
+                        ? oldVal.__staleWhileFetching
+                        : oldVal;
+                    if (oldValue !== undefined)
+                        status.oldValue = oldValue;
+                }
+            }
+            else if (status) {
+                status.set = 'update';
+            }
+        }
+        if (ttl !== 0 && !this.#ttls) {
+            this.#initializeTTLTracking();
+        }
+        if (this.#ttls) {
+            if (!noUpdateTTL) {
+                this.#setItemTTL(index, ttl, start);
+            }
+            if (status)
+                this.#statusTTL(status, index);
+        }
+        if (!noDisposeOnSet && this.#hasDisposeAfter && this.#disposed) {
+            const dt = this.#disposed;
+            let task;
+            while ((task = dt?.shift())) {
+                this.#disposeAfter?.(...task);
+            }
+        }
         return this;
     }
     /**
-     * Alias for {@link isStream}
-     *
-     * Former export location, maintained for backwards compatibility.
-     *
-     * @deprecated
+     * Evict the least recently used item, returning its value or
+     * `undefined` if cache is empty.
      */
-    static get isStream() {
-        return exports.isStream;
+    pop() {
+        try {
+            while (this.#size) {
+                const val = this.#valList[this.#head];
+                this.#evict(true);
+                if (this.#isBackgroundFetch(val)) {
+                    if (val.__staleWhileFetching) {
+                        return val.__staleWhileFetching;
+                    }
+                }
+                else if (val !== undefined) {
+                    return val;
+                }
+            }
+        }
+        finally {
+            if (this.#hasDisposeAfter && this.#disposed) {
+                const dt = this.#disposed;
+                let task;
+                while ((task = dt?.shift())) {
+                    this.#disposeAfter?.(...task);
+                }
+            }
+        }
+    }
+    #evict(free) {
+        const head = this.#head;
+        const k = this.#keyList[head];
+        const v = this.#valList[head];
+        if (this.#hasFetchMethod && this.#isBackgroundFetch(v)) {
+            v.__abortController.abort(new Error('evicted'));
+        }
+        else if (this.#hasDispose || this.#hasDisposeAfter) {
+            if (this.#hasDispose) {
+                this.#dispose?.(v, k, 'evict');
+            }
+            if (this.#hasDisposeAfter) {
+                this.#disposed?.push([v, k, 'evict']);
+            }
+        }
+        this.#removeItemSize(head);
+        // if we aren't about to use the index, then null these out
+        if (free) {
+            this.#keyList[head] = undefined;
+            this.#valList[head] = undefined;
+            this.#free.push(head);
+        }
+        if (this.#size === 1) {
+            this.#head = this.#tail = 0;
+            this.#free.length = 0;
+        }
+        else {
+            this.#head = this.#next[head];
+        }
+        this.#keyMap.delete(k);
+        this.#size--;
+        return head;
+    }
+    /**
+     * Check if a key is in the cache, without updating the recency of use.
+     * Will return false if the item is stale, even though it is technically
+     * in the cache.
+     *
+     * Check if a key is in the cache, without updating the recency of
+     * use. Age is updated if {@link LRUCache.OptionsBase.updateAgeOnHas} is set
+     * to `true` in either the options or the constructor.
+     *
+     * Will return `false` if the item is stale, even though it is technically in
+     * the cache. The difference can be determined (if it matters) by using a
+     * `status` argument, and inspecting the `has` field.
+     *
+     * Will not update item age unless
+     * {@link LRUCache.OptionsBase.updateAgeOnHas} is set.
+     */
+    has(k, hasOptions = {}) {
+        const { updateAgeOnHas = this.updateAgeOnHas, status } = hasOptions;
+        const index = this.#keyMap.get(k);
+        if (index !== undefined) {
+            const v = this.#valList[index];
+            if (this.#isBackgroundFetch(v) &&
+                v.__staleWhileFetching === undefined) {
+                return false;
+            }
+            if (!this.#isStale(index)) {
+                if (updateAgeOnHas) {
+                    this.#updateItemAge(index);
+                }
+                if (status) {
+                    status.has = 'hit';
+                    this.#statusTTL(status, index);
+                }
+                return true;
+            }
+            else if (status) {
+                status.has = 'stale';
+                this.#statusTTL(status, index);
+            }
+        }
+        else if (status) {
+            status.has = 'miss';
+        }
+        return false;
+    }
+    /**
+     * Like {@link LRUCache#get} but doesn't update recency or delete stale
+     * items.
+     *
+     * Returns `undefined` if the item is stale, unless
+     * {@link LRUCache.OptionsBase.allowStale} is set.
+     */
+    peek(k, peekOptions = {}) {
+        const { allowStale = this.allowStale } = peekOptions;
+        const index = this.#keyMap.get(k);
+        if (index === undefined ||
+            (!allowStale && this.#isStale(index))) {
+            return;
+        }
+        const v = this.#valList[index];
+        // either stale and allowed, or forcing a refresh of non-stale value
+        return this.#isBackgroundFetch(v) ? v.__staleWhileFetching : v;
+    }
+    #backgroundFetch(k, index, options, context) {
+        const v = index === undefined ? undefined : this.#valList[index];
+        if (this.#isBackgroundFetch(v)) {
+            return v;
+        }
+        const ac = new AC();
+        const { signal } = options;
+        // when/if our AC signals, then stop listening to theirs.
+        signal?.addEventListener('abort', () => ac.abort(signal.reason), {
+            signal: ac.signal,
+        });
+        const fetchOpts = {
+            signal: ac.signal,
+            options,
+            context,
+        };
+        const cb = (v, updateCache = false) => {
+            const { aborted } = ac.signal;
+            const ignoreAbort = options.ignoreFetchAbort && v !== undefined;
+            if (options.status) {
+                if (aborted && !updateCache) {
+                    options.status.fetchAborted = true;
+                    options.status.fetchError = ac.signal.reason;
+                    if (ignoreAbort)
+                        options.status.fetchAbortIgnored = true;
+                }
+                else {
+                    options.status.fetchResolved = true;
+                }
+            }
+            if (aborted && !ignoreAbort && !updateCache) {
+                return fetchFail(ac.signal.reason);
+            }
+            // either we didn't abort, and are still here, or we did, and ignored
+            const bf = p;
+            if (this.#valList[index] === p) {
+                if (v === undefined) {
+                    if (bf.__staleWhileFetching) {
+                        this.#valList[index] = bf.__staleWhileFetching;
+                    }
+                    else {
+                        this.#delete(k, 'fetch');
+                    }
+                }
+                else {
+                    if (options.status)
+                        options.status.fetchUpdated = true;
+                    this.set(k, v, fetchOpts.options);
+                }
+            }
+            return v;
+        };
+        const eb = (er) => {
+            if (options.status) {
+                options.status.fetchRejected = true;
+                options.status.fetchError = er;
+            }
+            return fetchFail(er);
+        };
+        const fetchFail = (er) => {
+            const { aborted } = ac.signal;
+            const allowStaleAborted = aborted && options.allowStaleOnFetchAbort;
+            const allowStale = allowStaleAborted || options.allowStaleOnFetchRejection;
+            const noDelete = allowStale || options.noDeleteOnFetchRejection;
+            const bf = p;
+            if (this.#valList[index] === p) {
+                // if we allow stale on fetch rejections, then we need to ensure that
+                // the stale value is not removed from the cache when the fetch fails.
+                const del = !noDelete || bf.__staleWhileFetching === undefined;
+                if (del) {
+                    this.#delete(k, 'fetch');
+                }
+                else if (!allowStaleAborted) {
+                    // still replace the *promise* with the stale value,
+                    // since we are done with the promise at this point.
+                    // leave it untouched if we're still waiting for an
+                    // aborted background fetch that hasn't yet returned.
+                    this.#valList[index] = bf.__staleWhileFetching;
+                }
+            }
+            if (allowStale) {
+                if (options.status && bf.__staleWhileFetching !== undefined) {
+                    options.status.returnedStale = true;
+                }
+                return bf.__staleWhileFetching;
+            }
+            else if (bf.__returned === bf) {
+                throw er;
+            }
+        };
+        const pcall = (res, rej) => {
+            const fmp = this.#fetchMethod?.(k, v, fetchOpts);
+            if (fmp && fmp instanceof Promise) {
+                fmp.then(v => res(v === undefined ? undefined : v), rej);
+            }
+            // ignored, we go until we finish, regardless.
+            // defer check until we are actually aborting,
+            // so fetchMethod can override.
+            ac.signal.addEventListener('abort', () => {
+                if (!options.ignoreFetchAbort ||
+                    options.allowStaleOnFetchAbort) {
+                    res(undefined);
+                    // when it eventually resolves, update the cache.
+                    if (options.allowStaleOnFetchAbort) {
+                        res = v => cb(v, true);
+                    }
+                }
+            });
+        };
+        if (options.status)
+            options.status.fetchDispatched = true;
+        const p = new Promise(pcall).then(cb, eb);
+        const bf = Object.assign(p, {
+            __abortController: ac,
+            __staleWhileFetching: v,
+            __returned: undefined,
+        });
+        if (index === undefined) {
+            // internal, don't expose status.
+            this.set(k, bf, { ...fetchOpts.options, status: undefined });
+            index = this.#keyMap.get(k);
+        }
+        else {
+            this.#valList[index] = bf;
+        }
+        return bf;
+    }
+    #isBackgroundFetch(p) {
+        if (!this.#hasFetchMethod)
+            return false;
+        const b = p;
+        return (!!b &&
+            b instanceof Promise &&
+            b.hasOwnProperty('__staleWhileFetching') &&
+            b.__abortController instanceof AC);
+    }
+    async fetch(k, fetchOptions = {}) {
+        const { 
+        // get options
+        allowStale = this.allowStale, updateAgeOnGet = this.updateAgeOnGet, noDeleteOnStaleGet = this.noDeleteOnStaleGet, 
+        // set options
+        ttl = this.ttl, noDisposeOnSet = this.noDisposeOnSet, size = 0, sizeCalculation = this.sizeCalculation, noUpdateTTL = this.noUpdateTTL, 
+        // fetch exclusive options
+        noDeleteOnFetchRejection = this.noDeleteOnFetchRejection, allowStaleOnFetchRejection = this.allowStaleOnFetchRejection, ignoreFetchAbort = this.ignoreFetchAbort, allowStaleOnFetchAbort = this.allowStaleOnFetchAbort, context, forceRefresh = false, status, signal, } = fetchOptions;
+        if (!this.#hasFetchMethod) {
+            if (status)
+                status.fetch = 'get';
+            return this.get(k, {
+                allowStale,
+                updateAgeOnGet,
+                noDeleteOnStaleGet,
+                status,
+            });
+        }
+        const options = {
+            allowStale,
+            updateAgeOnGet,
+            noDeleteOnStaleGet,
+            ttl,
+            noDisposeOnSet,
+            size,
+            sizeCalculation,
+            noUpdateTTL,
+            noDeleteOnFetchRejection,
+            allowStaleOnFetchRejection,
+            allowStaleOnFetchAbort,
+            ignoreFetchAbort,
+            status,
+            signal,
+        };
+        let index = this.#keyMap.get(k);
+        if (index === undefined) {
+            if (status)
+                status.fetch = 'miss';
+            const p = this.#backgroundFetch(k, index, options, context);
+            return (p.__returned = p);
+        }
+        else {
+            // in cache, maybe already fetching
+            const v = this.#valList[index];
+            if (this.#isBackgroundFetch(v)) {
+                const stale = allowStale && v.__staleWhileFetching !== undefined;
+                if (status) {
+                    status.fetch = 'inflight';
+                    if (stale)
+                        status.returnedStale = true;
+                }
+                return stale ? v.__staleWhileFetching : (v.__returned = v);
+            }
+            // if we force a refresh, that means do NOT serve the cached value,
+            // unless we are already in the process of refreshing the cache.
+            const isStale = this.#isStale(index);
+            if (!forceRefresh && !isStale) {
+                if (status)
+                    status.fetch = 'hit';
+                this.#moveToTail(index);
+                if (updateAgeOnGet) {
+                    this.#updateItemAge(index);
+                }
+                if (status)
+                    this.#statusTTL(status, index);
+                return v;
+            }
+            // ok, it is stale or a forced refresh, and not already fetching.
+            // refresh the cache.
+            const p = this.#backgroundFetch(k, index, options, context);
+            const hasStale = p.__staleWhileFetching !== undefined;
+            const staleVal = hasStale && allowStale;
+            if (status) {
+                status.fetch = isStale ? 'stale' : 'refresh';
+                if (staleVal && isStale)
+                    status.returnedStale = true;
+            }
+            return staleVal ? p.__staleWhileFetching : (p.__returned = p);
+        }
+    }
+    async forceFetch(k, fetchOptions = {}) {
+        const v = await this.fetch(k, fetchOptions);
+        if (v === undefined)
+            throw new Error('fetch() returned undefined');
+        return v;
+    }
+    memo(k, memoOptions = {}) {
+        const memoMethod = this.#memoMethod;
+        if (!memoMethod) {
+            throw new Error('no memoMethod provided to constructor');
+        }
+        const { context, forceRefresh, ...options } = memoOptions;
+        const v = this.get(k, options);
+        if (!forceRefresh && v !== undefined)
+            return v;
+        const vv = memoMethod(k, v, {
+            options,
+            context,
+        });
+        this.set(k, vv, options);
+        return vv;
+    }
+    /**
+     * Return a value from the cache. Will update the recency of the cache
+     * entry found.
+     *
+     * If the key is not found, get() will return `undefined`.
+     */
+    get(k, getOptions = {}) {
+        const { allowStale = this.allowStale, updateAgeOnGet = this.updateAgeOnGet, noDeleteOnStaleGet = this.noDeleteOnStaleGet, status, } = getOptions;
+        const index = this.#keyMap.get(k);
+        if (index !== undefined) {
+            const value = this.#valList[index];
+            const fetching = this.#isBackgroundFetch(value);
+            if (status)
+                this.#statusTTL(status, index);
+            if (this.#isStale(index)) {
+                if (status)
+                    status.get = 'stale';
+                // delete only if not an in-flight background fetch
+                if (!fetching) {
+                    if (!noDeleteOnStaleGet) {
+                        this.#delete(k, 'expire');
+                    }
+                    if (status && allowStale)
+                        status.returnedStale = true;
+                    return allowStale ? value : undefined;
+                }
+                else {
+                    if (status &&
+                        allowStale &&
+                        value.__staleWhileFetching !== undefined) {
+                        status.returnedStale = true;
+                    }
+                    return allowStale ? value.__staleWhileFetching : undefined;
+                }
+            }
+            else {
+                if (status)
+                    status.get = 'hit';
+                // if we're currently fetching it, we don't actually have it yet
+                // it's not stale, which means this isn't a staleWhileRefetching.
+                // If it's not stale, and fetching, AND has a __staleWhileFetching
+                // value, then that means the user fetched with {forceRefresh:true},
+                // so it's safe to return that value.
+                if (fetching) {
+                    return value.__staleWhileFetching;
+                }
+                this.#moveToTail(index);
+                if (updateAgeOnGet) {
+                    this.#updateItemAge(index);
+                }
+                return value;
+            }
+        }
+        else if (status) {
+            status.get = 'miss';
+        }
+    }
+    #connect(p, n) {
+        this.#prev[n] = p;
+        this.#next[p] = n;
+    }
+    #moveToTail(index) {
+        // if tail already, nothing to do
+        // if head, move head to next[index]
+        // else
+        //   move next[prev[index]] to next[index] (head has no prev)
+        //   move prev[next[index]] to prev[index]
+        // prev[index] = tail
+        // next[tail] = index
+        // tail = index
+        if (index !== this.#tail) {
+            if (index === this.#head) {
+                this.#head = this.#next[index];
+            }
+            else {
+                this.#connect(this.#prev[index], this.#next[index]);
+            }
+            this.#connect(this.#tail, index);
+            this.#tail = index;
+        }
+    }
+    /**
+     * Deletes a key out of the cache.
+     *
+     * Returns true if the key was deleted, false otherwise.
+     */
+    delete(k) {
+        return this.#delete(k, 'delete');
+    }
+    #delete(k, reason) {
+        let deleted = false;
+        if (this.#size !== 0) {
+            const index = this.#keyMap.get(k);
+            if (index !== undefined) {
+                deleted = true;
+                if (this.#size === 1) {
+                    this.#clear(reason);
+                }
+                else {
+                    this.#removeItemSize(index);
+                    const v = this.#valList[index];
+                    if (this.#isBackgroundFetch(v)) {
+                        v.__abortController.abort(new Error('deleted'));
+                    }
+                    else if (this.#hasDispose || this.#hasDisposeAfter) {
+                        if (this.#hasDispose) {
+                            this.#dispose?.(v, k, reason);
+                        }
+                        if (this.#hasDisposeAfter) {
+                            this.#disposed?.push([v, k, reason]);
+                        }
+                    }
+                    this.#keyMap.delete(k);
+                    this.#keyList[index] = undefined;
+                    this.#valList[index] = undefined;
+                    if (index === this.#tail) {
+                        this.#tail = this.#prev[index];
+                    }
+                    else if (index === this.#head) {
+                        this.#head = this.#next[index];
+                    }
+                    else {
+                        const pi = this.#prev[index];
+                        this.#next[pi] = this.#next[index];
+                        const ni = this.#next[index];
+                        this.#prev[ni] = this.#prev[index];
+                    }
+                    this.#size--;
+                    this.#free.push(index);
+                }
+            }
+        }
+        if (this.#hasDisposeAfter && this.#disposed?.length) {
+            const dt = this.#disposed;
+            let task;
+            while ((task = dt?.shift())) {
+                this.#disposeAfter?.(...task);
+            }
+        }
+        return deleted;
+    }
+    /**
+     * Clear the cache entirely, throwing away all values.
+     */
+    clear() {
+        return this.#clear('delete');
+    }
+    #clear(reason) {
+        for (const index of this.#rindexes({ allowStale: true })) {
+            const v = this.#valList[index];
+            if (this.#isBackgroundFetch(v)) {
+                v.__abortController.abort(new Error('deleted'));
+            }
+            else {
+                const k = this.#keyList[index];
+                if (this.#hasDispose) {
+                    this.#dispose?.(v, k, reason);
+                }
+                if (this.#hasDisposeAfter) {
+                    this.#disposed?.push([v, k, reason]);
+                }
+            }
+        }
+        this.#keyMap.clear();
+        this.#valList.fill(undefined);
+        this.#keyList.fill(undefined);
+        if (this.#ttls && this.#starts) {
+            this.#ttls.fill(0);
+            this.#starts.fill(0);
+        }
+        if (this.#sizes) {
+            this.#sizes.fill(0);
+        }
+        this.#head = 0;
+        this.#tail = 0;
+        this.#free.length = 0;
+        this.#calculatedSize = 0;
+        this.#size = 0;
+        if (this.#hasDisposeAfter && this.#disposed) {
+            const dt = this.#disposed;
+            let task;
+            while ((task = dt?.shift())) {
+                this.#disposeAfter?.(...task);
+            }
+        }
     }
 }
-exports.Minipass = Minipass;
+exports.LRUCache = LRUCache;
 //# sourceMappingURL=index.js.map
 
 /***/ }),
 
-/***/ 3850:
+/***/ 4172:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
-var lodash=__nccwpck_require__(2356),path=__nccwpck_require__(6928),ajv=__nccwpck_require__(2965),promises=__nccwpck_require__(1943),picocolors=__nccwpck_require__(6642),glob=__nccwpck_require__(3529),process=__nccwpck_require__(932),child_process=__nccwpck_require__(5317),os=__nccwpck_require__(857);var V=t=>{throw TypeError(t)};var xt=(t,r,o)=>r.has(t)||V("Cannot "+o);var G=(t,r,o)=>(xt(t,r,"read from private field"),o?o.call(t):r.get(t)),W=(t,r,o)=>r.has(t)?V("Cannot add the same private member more than once"):r instanceof WeakSet?r.add(t):r.set(t,o);var l=class{constructor(r,o){this.output=r;this.verbose=o;}async group(r,o){this.output.group(r);try{return await o()}finally{this.output.groupEnd();}}info(r){this.output.log(r);}warning(r){this.output.warn(picocolors.yellow(r.toString()));}error(r){this.output.error(r);}debug(r){this.verbose&&this.output.debug(r);}};var e=new l(console,!1),Y=t=>{e=t;};var d=t=>r=>(t(r),r);var y=(t,r)=>promises.writeFile(t,r,"utf-8").then(d(()=>e.debug(`File ${t} written`))).catch(d(()=>e.error(`Error while writing file ${t}`))),L=(t,r)=>promises.copyFile(t,r).then(d(()=>e.debug(`Copied file ${t} to ${r}`))).catch(d(()=>e.error(`Error while writing file ${t}`))),B=t=>promises.mkdir(t,{recursive:!0}).then(()=>e.debug(`Created directory ${t}`)).catch(d(()=>e.error(`Error while writing file ${t}`))),k=t=>promises.readFile(t,"utf8").then(d(()=>e.debug(`Read file ${t}`))).catch(d(()=>e.error(`Error while reading file ${t}`))),K=(t,r)=>promises.rm(t,r).then(d(()=>e.debug(`Removed ${t}`))).catch(d(()=>e.error(`Error while removing ${t}`)));var h=class extends Error{constructor(r){let o=r??[{message:"Unknown error"}];super(o.map(i=>i.message).join(`
+var lodash=__nccwpck_require__(2356),path=__nccwpck_require__(6928),ajv=__nccwpck_require__(8971),promises=__nccwpck_require__(1943),picocolors=__nccwpck_require__(2324),glob=__nccwpck_require__(8841),process=__nccwpck_require__(932),child_process=__nccwpck_require__(5317),os=__nccwpck_require__(857);var V=t=>{throw TypeError(t)};var xt=(t,r,o)=>r.has(t)||V("Cannot "+o);var G=(t,r,o)=>(xt(t,r,"read from private field"),o?o.call(t):r.get(t)),W=(t,r,o)=>r.has(t)?V("Cannot add the same private member more than once"):r instanceof WeakSet?r.add(t):r.set(t,o);var l=class{constructor(r,o){this.output=r;this.verbose=o;}async group(r,o){this.output.group(r);try{return await o()}finally{this.output.groupEnd();}}info(r){this.output.log(r);}warning(r){this.output.warn(picocolors.yellow(r.toString()));}error(r){this.output.error(r);}debug(r){this.verbose&&this.output.debug(r);}};var e=new l(console,!1),Y=t=>{e=t;};var d=t=>r=>(t(r),r);var y=(t,r)=>promises.writeFile(t,r,"utf-8").then(d(()=>e.debug(`File ${t} written`))).catch(d(()=>e.error(`Error while writing file ${t}`))),L=(t,r)=>promises.copyFile(t,r).then(d(()=>e.debug(`Copied file ${t} to ${r}`))).catch(d(()=>e.error(`Error while writing file ${t}`))),B=t=>promises.mkdir(t,{recursive:!0}).then(()=>e.debug(`Created directory ${t}`)).catch(d(()=>e.error(`Error while writing file ${t}`))),k=t=>promises.readFile(t,"utf8").then(d(()=>e.debug(`Read file ${t}`))).catch(d(()=>e.error(`Error while reading file ${t}`))),K=(t,r)=>promises.rm(t,r).then(d(()=>e.debug(`Removed ${t}`))).catch(d(()=>e.error(`Error while removing ${t}`)));var h=class extends Error{constructor(r){let o=r??[{message:"Unknown error"}];super(o.map(i=>i.message).join(`
 `));}};var Q=new ajv.Ajv().compile({type:"object",properties:{project_name:{type:"string"},tag:{type:"string"},previous_tag:{type:"string"},version:{type:"string"},commit:{type:"string"},date:{type:"string"},runtime:{type:"object",properties:{goos:{type:"string"},goarch:{type:"string"}},required:["goarch","goos"]}},required:["commit","date","previous_tag","project_name","runtime","tag","version"]}),j=async t=>{let r=JSON.parse(await k(t));if(Q(r))return r;throw new h(Q.errors)};var Z=new ajv.Ajv,X=Z.compile({items:{type:"object",additionalProperties:!0,properties:{name:{type:"string"},path:{type:"string"},internal_type:{type:"integer"},type:{type:"string"},goos:{type:"string"},goarch:{type:"string"},extra:{type:"object"},goamd64:{type:"string"}},required:["internal_type","name","path","type"]},type:"array"}),N=Z.compile({items:{type:"object",additionalProperties:!0,properties:{name:{type:"string"},path:{type:"string"},internal_type:{const:4},type:{type:"string"},goos:{type:"string"},goarch:{type:"string"},extra:{type:"object",additionalProperties:!0,properties:{Binary:{type:"string"},Builder:{type:"string"},Ext:{type:"string"},ID:{type:"string"}},required:["Binary","Ext","ID"]},goamd64:{type:"string"}},required:["internal_type","name","path","type","extra"]},type:"array"}),v=async t=>{let r=JSON.parse(await k(t));if(X(r))return r;throw new h(X.errors)};var M=async(t,r)=>{await y(t,JSON.stringify(r,null,2));};var u=class{projectPath;constructor(r){this.projectPath=path.resolve(process.cwd(),r);}get artifactsPath(){return path.join(this.projectPath,"dist","artifacts.json")}get metadataPath(){return path.join(this.projectPath,"dist","metadata.json")}get distPath(){return path.join(this.projectPath,"dist","npm")}project(...r){return path.join(this.projectPath,...r)}packageFolder(...[r,...o]){return path.join(this.distPath,lodash.kebabCase(r),...o)}packageJson(r){return path.join(this.projectPath,"dist","npm",lodash.kebabCase(r),"package.json")}};var E=t=>r=>r.type==="Binary"&&r.extra.ID===t;var R=(t,r)=>{if(!(t!=null&&t.length))throw new Error(r??"Value should not be empty")};var rt=(t,r)=>glob.glob(r,{cwd:t,nocase:!0,ignore:["node_modules/**","dist/"]}).then(d(o=>{e.debug("Lookup files by globs"),r.forEach(i=>e.debug(i)),e.debug(`In folder ${t}`),e.debug("Founded:"),o.forEach(i=>e.debug(i));}));var F,I=class I extends String{constructor(){super(...arguments);W(this,F,!0);}static isCode(o){return o instanceof I&&G(o,F)}};F=new WeakMap;var w=I;var St=t=>{let r=t.getFullYear(),o=t.getMonth(),i=t.getDate(),n=t.getHours(),s=t.getMinutes(),a=t.getSeconds(),c=t.getMilliseconds();return `new Date(${r}, ${o}, ${i}, ${n}, ${s}, ${a}, ${c})`},Tt=t=>{let r=Object.entries(t).map(([o,i])=>`${o}: ${_(i)}`);return lodash.isEmpty(t)?"{}":`{ ${r.join(", ")} }`},Dt=t=>lodash.isEmpty(t)?"[]":`[ ${t.map(_).join(", ")} ]`,_=t=>{switch(!0){case w.isCode(t):return t.toString();case typeof t=="string":return `'${t}'`;case typeof t=="number":return t.toString();case typeof t=="boolean":return t.toString();case t===null:return "null";case t===void 0:return "undefined";case t instanceof Date:return St(t);case typeof t=="symbol":return `Symbol('${t.description}')`;case Array.isArray(t):return Dt(t);case(typeof t=="object"&&(t==null?void 0:t.constructor.name)==="Object"):return Tt(t)}throw new Error(`Unsupported type: ${typeof t}`)};var ot=(t,...r)=>{let o=t.reduce((i,n,s)=>i+_(r[s-1])+n);return new w(o)};var A=ot;var Jt={amd64:"x64",386:"ia32",arm:"arm",arm64:"arm64",s390x:"s390x",s390:"s390",riscv64:"riscv64",ppc64:"ppc64",ppc:"ppc",mips:"mips"},it=t=>{let r=Jt[t];if(!r)throw new Error(`${t} is not supported`);return r};var Lt={darwin:"darwin",linux:"linux",windows:"win32",android:"android",aix:"aix",freebsd:"freebsd",openbsd:"openbsd",solaris:"sunos",netbsd:"netbsd"},nt=t=>{let r=Lt[t];if(!r)throw new Error(`${t} is not supported`);return r};var C=(t,r,o,i)=>({name:`${r.project_name}_${t.goos}_${t.goarch}`,version:r.version,os:nt(t.goos),cpu:it(t.goarch),bin:`${t.extra.Binary}${t.extra.Ext}`,sourceBinary:t.path,destinationBinary:t.path,files:o,keywords:i}),O=(t,r,o,i,n)=>ct({name:H(t,o),description:r,version:t.version,bin:{[t.name]:t.bin},os:[t.os],cpu:[t.cpu],files:i,keywords:n}),H=(t,r)=>"project_name"in t?lodash.isEmpty(r)?t.project_name:`${r}/${t.project_name}`:lodash.isEmpty(r)?t.name:`${r}/${t.name}`,S=(t,r,o,i,n,s)=>ct({name:H(r,i),description:o,version:r.version,bin:{[r.project_name]:"index.js"},optionalDependencies:t.reduce((a,c)=>({...a,[H(c,i)]:r.version}),{}),os:lodash.uniq(t.map(a=>a.os)),cpu:lodash.uniq(t.map(a=>a.cpu)),files:n,keywords:s}),ct=({description:t,...r})=>t?{...r,description:t}:r;var pt=async(t,r,o)=>{for(let i of o){let n=t.project(i),s=t.packageFolder(r,i);await L(n,s);}},T=async t=>{var f;let r=new u(t.project);e.debug(`Start build package in ${r.project()}`);let o=await v(r.artifactsPath);R(o,"Couldn\u2019t find any artifacts."),e.debug(`Found ${o.length} artifact(s)`),t.verbose&&o.forEach(m=>e.debug(`${m.name}: ${m.path}`));let i=await j(r.metadataPath);t.verbose&&await e.group("Loaded metadata:",()=>(e.debug(`project_name: ${i.project_name}`),e.debug(`tag: ${i.tag}`),e.debug(`previous_tag: ${i.previous_tag}`),e.debug(`version: ${i.version}`),e.debug(`commit: ${i.commit}`),e.debug(`date: ${i.date}`),e.debug(`runtime_goos: ${i.runtime.goos}`),e.debug(`runtime_goarch: ${i.runtime.goarch}`),Promise.resolve()));let n=[],s=t.builder??i.project_name,a=o.filter(E(s));if(R(a,`Couldn\u2019t find any binary artifacts from ${s} builder`),!N(a))throw e.error("Invalid binary artifacts"),(f=N.errors)==null||f.forEach(m=>{e.error(JSON.stringify(m,null,2));}),await e.group("artifacts:",()=>(e.error(JSON.stringify(a,null,2)),Promise.resolve())),new Error("Invalid binary artifacts");e.debug(`Found ${a.length} artifact(s)`);let c=await rt(t.project,t.files);if(t.verbose){e.debug(`Found ${c.length} files:`);for(let m of c)e.debug(`${m}: ${m}`);}let p=t.keywords??[];for(let m of a){let[,P]=m.path.split(path.sep);await e.group(`Built package ${P}`,async()=>{let yt=path.join(t.project,m.path),{base:ht}=path.parse(m.path),J=r.packageFolder(P);await B(J),e.debug(`Created package path: ${J}`);let bt=path.join(J,ht),$=C(m,i,c,p);e.debug(`Created package ${$.name}: ${$.destinationBinary}`),n.push($),await L(yt,bt);let wt=O($,t.description,t.prefix,c,p),U=r.packageJson(P);await M(U,wt),e.debug(`Written package json file: ${U}`),await pt(r,P,c),e.debug(`Copied ${c.length} extra file(s)`);});}e.debug(`Built ${n.length} platform package(s)`);let g=S(n,i,t.description,t.prefix,c,p);await B(r.packageFolder(i.project_name)),e.debug(`Created package path: ${r.packageFolder(i.project_name)}`),await M(r.packageJson(i.project_name),g),e.debug(`Written package json file: ${r.packageJson(i.project_name)}`);let x=path.join(r.packageFolder(i.project_name),"index.js");await y(x,It(n,t.prefix)),e.debug(`Written package index.js file: ${x}`),await pt(r,i.project_name,c),e.debug(`Copied ${c.length} extra file(s)`);},Rt=(t,r)=>t?[r]:[],It=(t,r)=>{let o=t.reduce((s,a)=>({...s,[`${a.os}_${a.cpu}`]:[...Rt(!!r,r),a.name,a.bin]}),{}),i=lodash.isEmpty(r)?A`path.dirname(__dirname)`:A`path.dirname(path.dirname(__dirname))`;return A`#!/usr/bin/env node
 const path = require('path');
+const fs = require('fs');
 const child_process = require('child_process');
 const mapping = ${o};
 const modulesDirectory = ${i};
 const definition = mapping[process.platform + '_' + process.arch];
-const packagePath = path.join(modulesDirectory, ...definition);
+const packagePaths = [path.join(modulesDirectory, ...definition), path.join(__dirname, 'node_modules', ...definition)];
+const packagePath = packagePaths.find(p => fs.existsSync(p)) || packagePaths[0];
 child_process.spawn(packagePath, process.argv.splice(2), {
   stdio: 'inherit',
   env: process.env,
@@ -59844,7 +59846,7 @@ exports.ConsoleLogger=l;exports.build=xo;exports.list=wo;exports.publish=bo;expo
 
 /***/ }),
 
-/***/ 3047:
+/***/ 7399:
 /***/ ((module) => {
 
 "use strict";
@@ -59852,7 +59854,7 @@ module.exports = /*#__PURE__*/JSON.parse('{"$id":"https://raw.githubusercontent.
 
 /***/ }),
 
-/***/ 4981:
+/***/ 133:
 /***/ ((module) => {
 
 "use strict";

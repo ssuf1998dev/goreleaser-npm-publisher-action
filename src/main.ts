@@ -1,4 +1,4 @@
-import { publish } from 'goreleaser-npm-publisher';
+import { publish } from '@ssuf1998dev/goreleaser-npm-publisher';
 import { cwd } from 'node:process';
 import { boolean, string, stringArray } from './inputs';
 import { logger } from './logger';

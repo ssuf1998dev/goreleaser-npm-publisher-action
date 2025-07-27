@@ -910,6 +910,21 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@ssuf1998dev/goreleaser-npm-publisher@npm:~1.1.0-0":
+  version: 1.1.0-1.0.0
+  resolution: "@ssuf1998dev/goreleaser-npm-publisher@npm:1.1.0-1.0.0"
+  dependencies:
+    ajv: "npm:^8.17.1"
+    glob: "npm:^11.0.0"
+    lodash: "npm:^4.17.21"
+    picocolors: "npm:^1.1.1"
+    yargs: "npm:^17.7.2"
+  bin:
+    goreleaser-npm-publisher: dist/cli.cjs
+  checksum: 10c0/4b374334b0f51ed4eb4f54c7710a6862ad343753dca72d439ef73d7cacbad0be27e3e1b1ee51a2320f879fe44180e6302bd29fc32defb777f641ed4d57bda5f4
+  languageName: node
+  linkType: hard
+
 "@types/babel__core@npm:^7.1.14":
   version: 7.20.5
   resolution: "@types/babel__core@npm:7.20.5"
@@ -2591,20 +2606,30 @@ __metadata:
   languageName: node
   linkType: hard
 
-"goreleaser-npm-publisher@npm:^1.1.0":
-  version: 1.1.0
-  resolution: "goreleaser-npm-publisher@npm:1.1.0"
+"goreleaser-npm-publisher-action@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "goreleaser-npm-publisher-action@workspace:."
   dependencies:
-    ajv: "npm:^8.17.1"
-    glob: "npm:^11.0.0"
-    lodash: "npm:^4.17.21"
-    picocolors: "npm:^1.1.1"
-    yargs: "npm:^17.7.2"
-  bin:
-    goreleaser-npm-publisher: dist/cli.cjs
-  checksum: 10c0/b1d3aed05959fd981514f597ee42fc56418adcb8bb629f4cf3aac8c042be2cf4d0a3b46d6f0c7b46d091e2583ac9fb5cb3e739f2e9ef1563acc4493e2853d606
-  languageName: node
-  linkType: hard
+    "@actions/core": "npm:^1.11.1"
+    "@jest/globals": "npm:^29.7.0"
+    "@ssuf1998dev/goreleaser-npm-publisher": "npm:~1.1.0-0"
+    "@types/jest": "npm:^29.5.14"
+    "@types/node": "npm:^22.10.2"
+    "@typescript-eslint/eslint-plugin": "npm:^8.18.1"
+    "@typescript-eslint/parser": "npm:^8.18.1"
+    "@vercel/ncc": "npm:^0.38.3"
+    eslint: "npm:^8.57.1"
+    eslint-plugin-jest: "npm:^28.10.0"
+    eslint-plugin-jsonc: "npm:^2.18.2"
+    eslint-plugin-prettier: "npm:^5.2.1"
+    jest: "npm:^29.7.0"
+    make-coverage-badge: "npm:^1.2.0"
+    prettier: "npm:^3.4.2"
+    prettier-eslint: "npm:^16.3.0"
+    ts-jest: "npm:^29.2.5"
+    typescript: "npm:^5.7.2"
+  languageName: unknown
+  linkType: soft
 
 "graceful-fs@npm:^4.2.6, graceful-fs@npm:^4.2.9":
   version: 4.2.11
@@ -4808,31 +4833,6 @@ __metadata:
   checksum: 10c0/902bd57bfa30d51d4779b641c2bc403cdf1371fb9c91d3c058b0133694fcfdb817aef07a47f40faf79039eecbaa39ee9d3c532deff244f3a19ce68cea71a61e8
   languageName: node
   linkType: hard
-
-"typescript-action@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "typescript-action@workspace:."
-  dependencies:
-    "@actions/core": "npm:^1.11.1"
-    "@jest/globals": "npm:^29.7.0"
-    "@types/jest": "npm:^29.5.14"
-    "@types/node": "npm:^22.10.2"
-    "@typescript-eslint/eslint-plugin": "npm:^8.18.1"
-    "@typescript-eslint/parser": "npm:^8.18.1"
-    "@vercel/ncc": "npm:^0.38.3"
-    eslint: "npm:^8.57.1"
-    eslint-plugin-jest: "npm:^28.10.0"
-    eslint-plugin-jsonc: "npm:^2.18.2"
-    eslint-plugin-prettier: "npm:^5.2.1"
-    goreleaser-npm-publisher: "npm:^1.1.0"
-    jest: "npm:^29.7.0"
-    make-coverage-badge: "npm:^1.2.0"
-    prettier: "npm:^3.4.2"
-    prettier-eslint: "npm:^16.3.0"
-    ts-jest: "npm:^29.2.5"
-    typescript: "npm:^5.7.2"
-  languageName: unknown
-  linkType: soft
 
 "typescript@npm:^5.2.2":
   version: 5.6.2
