@@ -79,6 +79,7 @@ Also, you can customize the packages with next options:
 | **files**       | string[] | Files that should be included in the NPM package (e.g., `README.md`, `LICENSE` by default). |
 | **keywords**    | string[] | NPM package keywords.                                                                       |
 | **token**       | string   | The NPM authentication token.                                                               |
+| **tag**         | string   | Tag of the npm package.                                                                     |
 
 > [!NOTE]
 >
