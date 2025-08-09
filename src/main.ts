@@ -15,6 +15,7 @@ export async function run(): Promise<void> {
     files: stringArray('files', ['README.md', 'LICENSE']),
     keywords: stringArray('keywords', []),
     token: string('token'),
+    tag: string('tag'),
   });
 
   logger.debug('Finished publishing');
