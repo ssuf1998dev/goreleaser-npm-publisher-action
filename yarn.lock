@@ -916,7 +916,7 @@ __metadata:
   dependencies:
     "@actions/core": "npm:^1.11.1"
     "@jest/globals": "npm:^29.7.0"
-    "@ssuf1998dev/goreleaser-npm-publisher": "npm:~1.1.0-0"
+    "@ssuf1998dev/goreleaser-npm-publisher": "npm:1.1.0-1.1.0"
     "@types/jest": "npm:^29.5.14"
     "@types/node": "npm:^22.10.2"
     "@typescript-eslint/eslint-plugin": "npm:^8.18.1"
@@ -935,9 +935,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@ssuf1998dev/goreleaser-npm-publisher@npm:~1.1.0-0":
-  version: 1.1.0-1.0.0
-  resolution: "@ssuf1998dev/goreleaser-npm-publisher@npm:1.1.0-1.0.0"
+"@ssuf1998dev/goreleaser-npm-publisher@npm:1.1.0-1.1.0":
+  version: 1.1.0-1.1.0
+  resolution: "@ssuf1998dev/goreleaser-npm-publisher@npm:1.1.0-1.1.0"
   dependencies:
     ajv: "npm:^8.17.1"
     glob: "npm:^11.0.0"
@@ -946,7 +946,7 @@ __metadata:
     yargs: "npm:^17.7.2"
   bin:
     goreleaser-npm-publisher: dist/cli.cjs
-  checksum: 10c0/4b374334b0f51ed4eb4f54c7710a6862ad343753dca72d439ef73d7cacbad0be27e3e1b1ee51a2320f879fe44180e6302bd29fc32defb777f641ed4d57bda5f4
+  checksum: 10c0/f40c6bfc481ebc8c6a6e4e87ce9c1dbf695d20de7055749f9691d672e2850f5fad28e157c05715cf2890b5c04fd8edebf0a5c8cc8d6258a2cf73a8db5f0fca9e
   languageName: node
   linkType: hard
 
